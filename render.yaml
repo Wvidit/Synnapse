@@ -1,0 +1,22 @@
+services:
+  # The FastAPI Backend
+  - type: web
+    name: synnapse-api
+    env: python
+    region: ohio
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python -m uvicorn agent.server:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.12
+
+  # The React Frontend
+  - type: web
+    name: synnapse-ui
+    env: static
+    region: ohio
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "./frontend/dist"
+    envVars:
+      - key: NODE_VERSION
+        value: 18.17.0

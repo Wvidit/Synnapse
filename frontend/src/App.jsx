@@ -1,0 +1,306 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Send, Bot, User, BrainCircuit, Loader2, ChevronDown, ChevronRight, Search, BookOpen, Zap, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import axios from 'axios';
+import './App.css';
+
+const API_URL = 'http://127.0.0.1:8000/agent/run';
+
+// Simple markdown-to-JSX for bold and newlines
+function renderText(text) {
+  if (!text) return null;
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    // Split on newlines to add <br/>
+    return part.split('\n').map((line, j, arr) => (
+      <React.Fragment key={`${i}-${j}`}>{line}{j < arr.length - 1 && <br />}</React.Fragment>
+    ));
+  });
+}
+
+// Parse raw observation into structured object
+function parseObservation(raw) {
+  try {
+    const cleaned = raw
+      .replace(/'/g, '"')
+      .replace(/True/g, 'true')
+      .replace(/False/g, 'false')
+      .replace(/None/g, 'null');
+    return JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+}
+
+// Format a single step into readable content
+function formatStep(rawStep) {
+  const actionMatch = rawStep.match(/Action:\s*(\w+)/);
+  const obsMatch = rawStep.match(/Observation:\s*([\s\S]*)/);
+  const action = actionMatch ? actionMatch[1] : "thinking";
+  const obsRaw = obsMatch ? obsMatch[1].trim() : rawStep;
+
+  const parsed = parseObservation(obsRaw);
+  let obsText = obsRaw;
+
+  if (parsed) {
+    if (parsed.results && Array.isArray(parsed.results)) {
+      obsText = parsed.results.map((r, i) => `${r}`).join('\n\n');
+    } else if (parsed.hypothesis) {
+      obsText = `💡 ${parsed.hypothesis}`;
+    } else if (parsed.error) {
+      obsText = `⚠️ ${parsed.error}`;
+    } else if (parsed.message) {
+      obsText = parsed.message;
+      if (parsed.papers) {
+        obsText += '\n' + parsed.papers.map(p => `• ${p.title} (${p.citations} citations)`).join('\n');
+      }
+    } else if (parsed.source) {
+      obsText = `📄 Source: ${parsed.source}\n`;
+      if (parsed.connected_papers) {
+        obsText += parsed.connected_papers.map(p => `→ ${p.title}`).join('\n');
+      }
+      obsText += `\n(${parsed.edges_count} citation edges)`;
+    } else {
+      obsText = JSON.stringify(parsed, null, 2);
+    }
+  }
+
+  return { action, obsText };
+}
+
+// Get the best "answer" from the agent steps
+function extractAnswer(contexts) {
+  for (let i = contexts.length - 1; i >= 0; i--) {
+    const { action, obsText } = formatStep(contexts[i]);
+    if (obsText && !obsText.startsWith('⚠️') && obsText.length > 15) {
+      return obsText;
+    }
+  }
+  return "I've analyzed the research literature. Expand the reasoning loop below for details.";
+}
+
+const actionIcons = {
+  "search_literature": <Search size={13} />,
+  "explore_citations": <BookOpen size={13} />,
+  "generate_hypothesis": <Zap size={13} />,
+  "verify_logic": <CheckCircle2 size={13} />,
+  "summarize_context": <BrainCircuit size={13} />,
+};
+
+const CollapsibleSteps = ({ steps, metrics }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="agent-steps">
+      <button className="steps-toggle" onClick={() => setIsOpen(!isOpen)}>
+        {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span>ReAct Reasoning Loop</span>
+        <span className="steps-count">{metrics?.stepsTaken || steps.length} steps</span>
+      </button>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="steps-list">
+              {steps.map(step => {
+                const { action, obsText } = formatStep(step.content);
+                return (
+                  <div key={step.id} className="step-item">
+                    <div className="step-icon">{actionIcons[action] || <BrainCircuit size={13} />}</div>
+                    <div className="step-content">
+                      <span className="step-action">{action.replace(/_/g, ' ')}</span>
+                      <span className="step-obs">{obsText}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// Floating particle background
+const Particle = ({ style }) => (
+  <motion.div
+    className="particle"
+    style={style}
+    animate={{ y: [0, -30, 0], opacity: [0.3, 0.7, 0.3] }}
+    transition={{ duration: Math.random() * 4 + 3, repeat: Infinity, delay: Math.random() * 3, ease: "easeInOut" }}
+  />
+);
+
+const particles = Array.from({ length: 18 }, (_, i) => ({
+  id: i,
+  style: {
+    left: `${Math.random() * 100}%`,
+    top: `${Math.random() * 100}%`,
+    width: `${Math.random() * 4 + 2}px`,
+    height: `${Math.random() * 4 + 2}px`,
+  }
+}));
+
+function App() {
+  const [messages, setMessages] = useState([
+    {
+      id: 1,
+      sender: 'agent',
+      text: 'Hello! I am **Synnapse**, your Neurosymbolic AI Research Agent. I can search scientific literature, explore citation graphs, generate hypotheses, and verify logic. How can I assist you today?',
+      steps: []
+    }
+  ]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, loading]);
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+    const userMessage = { id: Date.now(), sender: 'user', text: input, steps: [] };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const response = await axios.post(API_URL, {
+        query: input,
+        max_steps: 10,
+        token_budget: 8192,
+        context_policy: "compression_cache"
+      });
+
+      const data = response.data;
+      const steps = data.final_context.map((ctx, idx) => ({ id: idx, content: ctx }));
+      const finalMsg = extractAnswer(data.final_context);
+
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        sender: 'agent',
+        text: finalMsg,
+        steps,
+        metrics: { stepsTaken: data.steps_taken, policy: data.policy_used }
+      }]);
+    } catch (err) {
+      console.error(err);
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        sender: 'agent',
+        text: "I'm sorry, my systems are currently offline. Please ensure the backend server is running on port 8000.",
+        steps: []
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="app-container">
+      <div className="particles-bg" aria-hidden="true">
+        {particles.map(p => <Particle key={p.id} style={p.style} />)}
+      </div>
+
+      <header className="header">
+        <div className="logo-section">
+          <motion.div animate={{ rotate: [0, 5, -5, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}>
+            <BrainCircuit size={30} className="logo-icon" />
+          </motion.div>
+          <div>
+            <h1>Synnapse</h1>
+            <p className="logo-subtitle">Neurosymbolic Research Agent</p>
+          </div>
+        </div>
+        <div className="status-badge">
+          <motion.span className="status-dot" animate={{ scale: [1, 1.4, 1], opacity: [1, 0.7, 1] }} transition={{ duration: 2, repeat: Infinity }} />
+          Engine Online
+        </div>
+      </header>
+
+      <div className="chat-area" ref={scrollRef}>
+        <AnimatePresence>
+          {messages.map((msg) => (
+            <motion.div
+              key={msg.id}
+              initial={{ opacity: 0, y: 20, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className={`message ${msg.sender}`}
+            >
+              <div className="message-avatar">
+                {msg.sender === 'agent' ? <BrainCircuit size={18} /> : <User size={18} />}
+              </div>
+              <div className="message-body">
+                <div className="message-text">{renderText(msg.text)}</div>
+                {msg.steps && msg.steps.length > 0 && (
+                  <CollapsibleSteps steps={msg.steps} metrics={msg.metrics} />
+                )}
+              </div>
+            </motion.div>
+          ))}
+
+          {loading && (
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="message agent">
+              <div className="message-avatar"><BrainCircuit size={18} /></div>
+              <div className="message-body">
+                <div className="thinking-anim">
+                  <span>Reasoning</span>
+                  <div className="typing-indicator"><span /><span /><span /></div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {messages.length === 1 && !loading && (
+        <div className="suggestions">
+          {[
+            "Find papers on graph neural networks",
+            "Generate hypothesis on transformer attention",
+            "Explore citations for arxiv:2603.25740"
+          ].map(s => (
+            <button key={s} className="chip" onClick={() => setInput(s)}>{s}</button>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={handleSend} className="input-area">
+        <div className="input-wrapper">
+          <input
+            type="text"
+            className="chat-input"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask about the research literature…"
+            disabled={loading}
+          />
+        </div>
+        <motion.button
+          type="submit"
+          className="send-button"
+          disabled={!input.trim() || loading}
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          {loading ? <Loader2 className="animate-spin" size={20} /> : <Send size={20} />}
+        </motion.button>
+      </form>
+    </div>
+  );
+}
+
+export default App;
