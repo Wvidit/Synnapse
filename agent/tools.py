@@ -53,7 +53,7 @@ def load_ai_assets():
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         from peft import PeftModel
         
-        base_name = "Qwen/Qwen2.5-1.5B-Instruct"
+        base_name = "Qwen/Qwen2.5-3B-Instruct"
         _tokenizer = AutoTokenizer.from_pretrained(base_name)
         
         bnb_config = BitsAndBytesConfig(
@@ -77,6 +77,11 @@ def load_ai_assets():
     except ImportError:
         print("Transformers or Peft not installed!")
 
+def strip_think_tags(text: str) -> str:
+    """Strip <think>...</think> reasoning blocks emitted by Qwen3 models."""
+    import re
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
 def generate_llm_response(prompt: str, max_new_tokens=150) -> str:
     load_ai_assets()
     if not _model:
@@ -90,9 +95,9 @@ def generate_llm_response(prompt: str, max_new_tokens=150) -> str:
             temperature=0.3,
             pad_token_id=_tokenizer.pad_token_id
         )
-    # Decode and strip the prompt out
+    # Decode, strip the prompt, then strip Qwen3 <think> blocks
     gen_text = _tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-    return gen_text.strip()
+    return strip_think_tags(gen_text)
 
 def search_literature(query: str, top_k: int = 5):
     """

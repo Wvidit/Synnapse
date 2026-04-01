@@ -7,13 +7,14 @@ from typing import List, Dict
 
 # Target categories: cs.LG (Machine Learning), cs.AI (Artificial Intelligence), q-bio.BM (Biomolecules)
 CATEGORIES = ["cs.LG", "cs.AI", "q-bio.BM"]
-MAX_RESULTS = 50  # Keep small for testing
+MAX_RESULTS = 5000  # Keep small for testing
 DATA_DIR = Path(__file__).parent.parent / "dataset"
 DATA_DIR.mkdir(exist_ok=True, parents=True)
 
 def fetch_arxiv_papers(category: str, max_results: int = 100) -> List[Dict]:
     print(f"Fetching {max_results} papers for {category} from arXiv...")
-    client = arxiv.Client()
+    # Increased delay_seconds to 10.0 and num_retries to 10 to prevent 429/503 HTTP errors on massive pulls
+    client = arxiv.Client(page_size=100, delay_seconds=10.0, num_retries=10)
     search = arxiv.Search(
         query=f"cat:{category}",
         max_results=max_results,
@@ -22,16 +23,21 @@ def fetch_arxiv_papers(category: str, max_results: int = 100) -> List[Dict]:
     )
     
     papers = []
-    for result in client.results(search):
-        papers.append({
-            "arxiv_id": result.get_short_id(),
-            "title": result.title,
-            "abstract": result.summary,
-            "year": result.published.year,
-            "field": category,
-            "published": result.published.isoformat(),
-            "authors": [author.name for author in result.authors]
-        })
+    try:
+        for result in client.results(search):
+            papers.append({
+                "arxiv_id": result.get_short_id(),
+                "title": result.title,
+                "abstract": result.summary,
+                "year": result.published.year,
+                "field": category,
+                "published": result.published.isoformat(),
+                "authors": [author.name for author in result.authors]
+            })
+    except Exception as e:
+        print(f"ArXiv API error encountered: {e}")
+        print(f"Salvaging {len(papers)} papers collected so far...")
+
     print(f"Found {len(papers)} papers for {category}.")
     return papers
 
