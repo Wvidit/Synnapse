@@ -1,0 +1,29 @@
+# Synnapse Core Dependencies
+
+# --- 1. LLM Training Pipeline (GRPO / SFT) ---
+torch
+transformers>=4.40.0
+datasets
+trl
+accelerate
+bitsandbytes
+huggingface_hub
+vllm==0.12.0
+
+# --- 2. Reasoning Agent API ---
+fastapi
+uvicorn
+pydantic
+
+# --- 3. Knowledge Graph & Database ---
+networkx
+faiss-cpu
+sentence-transformers
+
+# --- 4. Logic Verification (Neurosymbolic engine) ---
+z3-solver
+spacy
+
+# --- 5. Data Fetching ---
+requests
+arxiv
