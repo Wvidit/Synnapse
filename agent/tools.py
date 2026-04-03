@@ -53,27 +53,22 @@ def load_ai_assets():
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         from peft import PeftModel
         
-        base_name = "Qwen/Qwen2.5-3B-Instruct"
-        _tokenizer = AutoTokenizer.from_pretrained(base_name)
+        # Load the final merged/trained GRPO model directly from the Hub
+        model_name = "Wvidit/Synnapse-Qwen2.5-3B"
+        print(f"Loading final agent model: {model_name}")
+        
+        _tokenizer = AutoTokenizer.from_pretrained(model_name)
         
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=torch.float16
         )
         
-        base_model = AutoModelForCausalLM.from_pretrained(
-            base_name,
+        _model = AutoModelForCausalLM.from_pretrained(
+            model_name,
             device_map="auto",
             quantization_config=bnb_config
         )
-        
-        lora_path = MODEL_DIR / "final_lora"
-        if lora_path.exists():
-            print(f"Loading local fine-tuned LoRA from {lora_path}")
-            _model = PeftModel.from_pretrained(base_model, str(lora_path))
-        else:
-            print("No LoRA weights found, using base model.")
-            _model = base_model
     except ImportError:
         print("Transformers or Peft not installed!")
 

@@ -30,7 +30,7 @@ def fetch_arxiv_papers(category: str, max_results: int = 100) -> List[Dict]:
                 "title": result.title,
                 "abstract": result.summary,
                 "year": result.published.year,
-                "field": category,
+                "field": result.primary_category,
                 "published": result.published.isoformat(),
                 "authors": [author.name for author in result.authors]
             })
@@ -86,8 +86,10 @@ def enrich_with_semantic_scholar_batch(papers: List[Dict]) -> List[Dict]:
                         original_paper["s2_fields"] = paper_data.get("s2FieldsOfStudy", [])
                         
                         citations = []
-                        for c in paper_data.get("citations", []):
-                            c_arxiv = c.get("externalIds", {}).get("ArXiv", None)
+                        for c in paper_data.get("citations") or []:
+                            if not c: continue
+                            ext_ids = c.get("externalIds") or {}
+                            c_arxiv = ext_ids.get("ArXiv", None)
                             citations.append({
                                 "paperId": c.get("paperId"),
                                 "arxivId": c_arxiv,
@@ -122,10 +124,18 @@ def enrich_with_semantic_scholar_batch(papers: List[Dict]) -> List[Dict]:
 
 def main():
     all_papers = []
+    seen_ids = set()
     for cat in CATEGORIES:
         cat_papers = fetch_arxiv_papers(cat, max_results=MAX_RESULTS) 
         enriched = enrich_with_semantic_scholar_batch(cat_papers)
-        all_papers.extend(enriched)
+        
+        # Deduplicate papers based on arxiv_id to prevent conflicting Ground Truths
+        # when a paper cross-lists in multiple queries (e.g. cs.LG and cs.AI)
+        for paper in enriched:
+            p_id = paper['arxiv_id']
+            if p_id not in seen_ids:
+                seen_ids.add(p_id)
+                all_papers.append(paper)
         
     output_file = DATA_DIR / "papers.json"
     with open(output_file, 'w') as f:
