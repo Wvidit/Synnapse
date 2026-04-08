@@ -37,7 +37,7 @@ def embed_papers():
         return
 
     print(f"Embedding {len(abstracts)} abstracts...")
-    embeddings = model.encode(abstracts, show_progress_bar=True)
+    embeddings = model.encode(abstracts, show_progress_bar=True, batch_size=32, convert_to_numpy=True)
     
     print("Building FAISS index...")
     embedding_dim = embeddings.shape[1]

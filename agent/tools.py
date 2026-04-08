@@ -54,20 +54,20 @@ def load_ai_assets():
         from peft import PeftModel
         
         # Load the final merged/trained GRPO model directly from the Hub
-        model_name = "Wvidit/Synnapse-Qwen2.5-3B"
+        model_name = "Wvidit/Qwen-3-grpo"
         print(f"Loading final agent model: {model_name}")
         
         _tokenizer = AutoTokenizer.from_pretrained(model_name)
         
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16
-        )
+        #bnb_config = BitsAndBytesConfig(
+        #   load_in_4bit=True,
+        #   bnb_4bit_compute_dtype=torch.float16
+        #)
         
         _model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_map="auto",
-            quantization_config=bnb_config
+            #quantization_config=bnb_config
         )
     except ImportError:
         print("Transformers or Peft not installed!")
