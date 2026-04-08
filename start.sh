@@ -3,6 +3,7 @@
 #   Synnapse — One-Click Launch Script
 #   Starts both the FastAPI backend and
 #   the Vite React frontend in parallel.
+#   Accessible across the network.
 # ============================================
 
 set -e
@@ -10,6 +11,12 @@ set -e
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
+
+# Detect LAN IP address
+LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+if [ -z "$LAN_IP" ]; then
+    LAN_IP="localhost"
+fi
 
 echo ""
 echo "  ╔══════════════════════════════════════╗"
@@ -35,24 +42,26 @@ else
     echo "⚠️  No venv found. Using system Python."
 fi
 
-# 2. Start FastAPI backend
-echo "🚀 Starting backend on http://localhost:$BACKEND_PORT ..."
+# 2. Start FastAPI backend (0.0.0.0 = all network interfaces)
+echo "🚀 Starting backend on http://$LAN_IP:$BACKEND_PORT ..."
 cd "$PROJECT_DIR"
 python -m uvicorn agent.server:app --host 0.0.0.0 --port $BACKEND_PORT --reload &
 BACKEND_PID=$!
 
-# 3. Start Vite frontend
-echo "🚀 Starting frontend on http://localhost:$FRONTEND_PORT ..."
+# 3. Start Vite frontend (0.0.0.0 = all network interfaces)
+echo "🚀 Starting frontend on http://$LAN_IP:$FRONTEND_PORT ..."
 cd "$PROJECT_DIR/frontend"
-npm run dev -- --port $FRONTEND_PORT &
+npm run dev -- --host 0.0.0.0 --port $FRONTEND_PORT &
 FRONTEND_PID=$!
 
 echo ""
-echo "  ✅ Backend  → http://localhost:$BACKEND_PORT/docs"
-echo "  ✅ Frontend → http://localhost:$FRONTEND_PORT"
+echo "  ✅ Backend  → http://$LAN_IP:$BACKEND_PORT/docs"
+echo "  ✅ Frontend → http://$LAN_IP:$FRONTEND_PORT"
 echo ""
+echo "  🌐 Share these URLs with anyone on your network!"
 echo "  Press Ctrl+C to stop everything."
 echo ""
 
 # Wait for both processes
 wait
+
