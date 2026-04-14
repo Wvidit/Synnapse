@@ -224,11 +224,43 @@ def verify_logic(hypothesis: str, premises: list):
 
 def summarize_context(text: str):
     """
-    Compression model (SBERT extractive or abstractive using Local LLM).
+    Compression model: tries LLM first, falls back to extractive summarization.
     """
-    prompt = f"<|im_start|>system\nYou are a concise summarizer.<|im_end|>\n<|im_start|>user\nSummarize the following into a very short bullet point:\n{text}<|im_end|>\n<|im_start|>assistant\n"
-    res = generate_llm_response(prompt, max_new_tokens=80)
-    return res
+    # Try LLM-based summarization first
+    load_ai_assets()
+    if _model:
+        try:
+            prompt = f"<|im_start|>system\nYou are a concise summarizer.<|im_end|>\n<|im_start|>user\nSummarize the following into a very short bullet point:\n{text}<|im_end|>\n<|im_start|>assistant\n"
+            res = generate_llm_response(prompt, max_new_tokens=80)
+            if res and "not loaded" not in res.lower():
+                return res
+        except Exception:
+            pass
+
+    # Extractive fallback: pick key sentences
+    sentences = []
+    for part in text.replace("\n", ". ").split(". "):
+        part = part.strip()
+        if len(part.split()) < 5:
+            continue
+        # Skip action labels and internal metadata
+        if part.startswith("Action:") or "Observation:" in part:
+            continue
+        sentences.append(part)
+
+    if not sentences:
+        return "Summary: " + " ".join(text.split()[:50])
+
+    # Take top sentences up to ~100 words
+    summary_parts = []
+    word_count = 0
+    for s in sentences:
+        summary_parts.append(s)
+        word_count += len(s.split())
+        if word_count >= 100:
+            break
+
+    return "Summary: " + ". ".join(summary_parts)
 
 def lookup_taxonomy(query: str):
     """

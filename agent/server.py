@@ -236,41 +236,84 @@ def _extractive_fallback(query: str, context: List[str]) -> str:
     """Build a readable answer from tool outputs when the LLM is unavailable."""
     import json
 
+    # Strings that indicate a useless observation — skip these
+    SKIP_PHRASES = ["llm not loaded", "no context to summarize", "unknown tool"]
+
     parts = []
     for entry in context:
         if "Observation:" not in entry:
             continue
         obs_raw = entry.split("Observation:", 1)[1].strip()
 
+        # Skip known garbage strings
+        if any(skip in obs_raw.lower() for skip in SKIP_PHRASES):
+            continue
+
         try:
             parsed = json.loads(obs_raw)
         except (json.JSONDecodeError, TypeError):
             parsed = None
 
-        if parsed:
-            if isinstance(parsed, dict):
-                if "results" in parsed and isinstance(parsed["results"], list):
-                    for r in parsed["results"][:5]:
-                        parts.append(str(r))
-                elif "hypothesis" in parsed:
-                    parts.append(f"💡 {parsed['hypothesis']}")
-                elif "source" in parsed:
-                    line = f"📄 {parsed['source']}"
-                    if "connected_papers" in parsed:
-                        titles = [p.get("title", "") for p in parsed["connected_papers"][:3]]
-                        line += "\n  → " + "\n  → ".join(titles)
-                    parts.append(line)
-                elif "taxonomy_matches" in parsed:
-                    matches = parsed["taxonomy_matches"][:5]
-                    parts.append("🌳 Taxonomy:\n" + "\n".join(f"  • {m.get('key', '')}" for m in matches))
-                elif "verdict" in parsed:
-                    parts.append(f"✅ {parsed['verdict']}")
-                elif "error" in parsed:
-                    continue  # skip errors
-                else:
-                    parts.append(str(parsed))
-        elif obs_raw and len(obs_raw) > 10:
-            parts.append(obs_raw[:300])
+        if parsed and isinstance(parsed, dict):
+            # Search results — the most useful output
+            if "results" in parsed and isinstance(parsed["results"], list):
+                parts.append("Here's what I found in the literature:\n")
+                for r in parsed["results"][:5]:
+                    parts.append(str(r))
+
+            # Hypothesis
+            elif "hypothesis" in parsed:
+                parts.append(f"💡 **Hypothesis:** {parsed['hypothesis']}")
+
+            # Citation graph
+            elif "source" in parsed:
+                line = f"📄 **{parsed['source']}**"
+                if parsed.get("connected_papers"):
+                    titles = [p.get("title", "") for p in parsed["connected_papers"][:5]]
+                    line += "\n\nConnected papers:\n" + "\n".join(f"  → {t}" for t in titles if t)
+                if parsed.get("edges_count"):
+                    line += f"\n  ({parsed['edges_count']} citation edges found)"
+                parts.append(line)
+
+            # Taxonomy with actual matches
+            elif "taxonomy_matches" in parsed:
+                matches = parsed["taxonomy_matches"][:5]
+                parts.append("🌳 **Taxonomy:**\n" + "\n".join(f"  • {m.get('key', '')}" for m in matches))
+
+            # Taxonomy fallback (no matches) — skip, it's not useful
+            elif "taxonomy_subset" in parsed:
+                continue
+
+            # Verification verdict
+            elif "verdict" in parsed:
+                parts.append(f"✅ {parsed['verdict']}")
+            elif "status" in parsed and parsed.get("consistent") is not None:
+                status = "consistent" if parsed["consistent"] else "inconsistent"
+                parts.append(f"✅ Logic check: The claim appears to be **{status}** with the evidence.")
+
+            # Error — skip
+            elif "error" in parsed:
+                continue
+
+            # Message-only (like citation fallback)
+            elif "message" in parsed:
+                msg = parsed["message"]
+                if "no direct matches" in msg.lower() or "no exact match" in msg.lower():
+                    continue
+                parts.append(msg)
+
+            # Unknown dict — only include if it has real content
+            else:
+                s = str(parsed)
+                if len(s) > 20:
+                    parts.append(s[:300])
+
+        elif obs_raw and len(obs_raw) > 20:
+            # Plain text observation (like a summary)
+            if obs_raw.startswith("Summary:"):
+                parts.append(obs_raw)
+            else:
+                parts.append(obs_raw[:400])
 
     if parts:
         return "\n\n".join(parts)
