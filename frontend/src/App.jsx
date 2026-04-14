@@ -213,7 +213,8 @@ function App() {
 
       const data = response.data;
       const steps = data.final_context.map((ctx, idx) => ({ id: idx, content: ctx }));
-      const finalMsg = extractAnswer(data.final_context);
+      // Use the server's synthesized answer; fall back to extractive if missing
+      const finalMsg = data.answer || extractAnswer(data.final_context);
 
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
