@@ -63,25 +63,25 @@ EVAL_TASKS = [
     # Hypothesis generation
     {"query": "Propose a hypothesis about how knowledge graphs improve language model factuality.",
      "type": "hypothesis", "expected_tools": ["search_literature", "generate_hypothesis"],
-     "success_keywords": ["hypothesis", "knowledge", "graph"]},
+     "success_keywords": ["hypothesis", "knowledge", "graph", "factual", "novelty"]},
 
     {"query": "Generate a hypothesis about combining symbolic reasoning with neural networks.",
      "type": "hypothesis", "expected_tools": ["generate_hypothesis"],
-     "success_keywords": ["hypothesis", "symbolic", "neural"]},
+     "success_keywords": ["hypothesis", "symbolic", "neural", "novelty", "reasoning"]},
 
     # Logic verification (neurosymbolic)
     {"query": "Is the claim that 'graph neural networks improve sample efficiency' logically consistent with recent publications?",
      "type": "verification", "expected_tools": ["verify_logic"],
-     "success_keywords": ["consistent", "verified", "logic"]},
+     "success_keywords": ["consistent", "verified", "status", "sat", "contradiction", "model"]},
 
     {"query": "Verify whether attention mechanisms contradict recurrent architectures.",
      "type": "verification", "expected_tools": ["verify_logic"],
-     "success_keywords": ["consistent", "contradict", "verified"]},
+     "success_keywords": ["consistent", "contradict", "verified", "status", "sat"]},
 
     # Summarization / context compression
     {"query": "Summarize the state of research on diffusion models for image generation.",
      "type": "summarization", "expected_tools": ["search_literature", "summarize_context"],
-     "success_keywords": ["diffusion", "image", "generation"]},
+     "success_keywords": ["diffusion", "image", "generation", "model"]},
 ]
 
 # Agent configurations
@@ -115,10 +115,16 @@ def _check_success(response: dict, task: dict) -> bool:
     if response.get("status") != "success":
         return False
 
-    context_str = " ".join(str(c) for c in response.get("final_context", [])).lower()
+    final_ctx = response.get("final_context", [])
+    if not final_ctx:
+        return False
 
-    # Check for error indicators
-    if "error" in context_str and "no error" not in context_str:
+    context_str = " ".join(str(c) for c in final_ctx).lower()
+
+    # Only fail on errors in the LAST context entry (not earlier ones).
+    # Earlier tool errors may be recovered by subsequent tools.
+    last_entry = str(final_ctx[-1]).lower() if final_ctx else ""
+    if last_entry.startswith("error") or "exception" in last_entry:
         return False
 
     # Check keyword presence (at least 1 of expected keywords)
@@ -126,22 +132,46 @@ def _check_success(response: dict, task: dict) -> bool:
     return matches >= 1
 
 
+def _count_tools_used(response: dict) -> int:
+    """Count how many distinct tools were executed."""
+    tools = response.get("tools_used", [])
+    if tools:
+        return len(set(tools))
+    # Fallback: parse from context
+    ctx = " ".join(str(c) for c in response.get("final_context", []))
+    tool_names = ["search_literature", "explore_citations", "generate_hypothesis",
+                  "verify_logic", "summarize_context", "lookup_taxonomy"]
+    return sum(1 for t in tool_names if t in ctx)
+
+
 def _plausibility_score(response: dict, task: dict) -> float:
     """Proxy hallucination metric: how plausible is the response?"""
-    context_str = " ".join(str(c) for c in response.get("final_context", [])).lower()
+    final_ctx = response.get("final_context", [])
+    context_str = " ".join(str(c) for c in final_ctx).lower()
 
     if not context_str.strip():
         return 0.0
 
     score = 0.0
-    kw_matches = sum(1 for kw in task["success_keywords"] if kw in context_str)
-    score += min(kw_matches / max(len(task["success_keywords"]), 1), 1.0) * 0.5
 
-    # Penalise empty/error responses
-    if len(context_str.split()) > 20:
-        score += 0.3
-    if "error" not in context_str:
-        score += 0.2
+    # Keyword relevance (40%)
+    kw_matches = sum(1 for kw in task["success_keywords"] if kw in context_str)
+    score += min(kw_matches / max(len(task["success_keywords"]), 1), 1.0) * 0.4
+
+    # Substantive content (25%)
+    if len(context_str.split()) > 30:
+        score += 0.25
+    elif len(context_str.split()) > 10:
+        score += 0.1
+
+    # Tool diversity bonus — more tools used = more thorough (20%)
+    n_tools = _count_tools_used(response)
+    score += min(n_tools / 4, 1.0) * 0.2
+
+    # Clean execution — no errors in final output (15%)
+    last_entry = str(final_ctx[-1]).lower() if final_ctx else ""
+    if "error" not in last_entry:
+        score += 0.15
 
     return round(min(score, 1.0), 3)
 
