@@ -63,6 +63,27 @@ function formatStep(rawStep) {
         obsText += parsed.connected_papers.map(p => `→ ${p.title}`).join('\n');
       }
       obsText += `\n(${parsed.edges_count} citation edges)`;
+    } else if (parsed.taxonomy_matches) {
+      obsText = `🌳 Found ${parsed.total_matches} taxonomy nodes:\n`;
+      obsText += parsed.taxonomy_matches.map(m => `• ${m.path} (${m.key})`).join('\n');
+    } else if (parsed.taxonomy_subset) {
+      obsText = `🌳 Taxonomy categories:\n`;
+      if (Array.isArray(parsed.taxonomy_subset)) {
+        obsText += parsed.taxonomy_subset.map(k => `• ${k}`).join('\n');
+      } else {
+        obsText += parsed.taxonomy_subset;
+      }
+      if (parsed.message) obsText += `\n(${parsed.message})`;
+    } else if (parsed.status === "verified" || parsed.status === "unverified" || parsed.verdict !== undefined) {
+      obsText = `✅ Logic Verification: ${parsed.status ? parsed.status.toUpperCase() : 'COMPLETE'}\n`;
+      if (parsed.verdict) {
+        obsText += parsed.verdict;
+      } else if (parsed.result) {
+        obsText += parsed.result;
+      }
+      if (parsed.consistent !== undefined) {
+        obsText += `\nConsistent: ${parsed.consistent ? "Yes" : "No"}`;
+      }
     } else {
       obsText = JSON.stringify(parsed, null, 2);
     }
