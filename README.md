@@ -62,7 +62,7 @@ python -m eval.contextbench_eval --samples 3     # context policies
 | Baseline LLM Agent | 80.00% | 37.74% | 0.83s | $0.0005 |
 | Neurosymbolic Agent | 100.00% | 12.64% | 0.82s | $0.0006 |
 
-*(Note: The Sample set was pretty small)
+*(Note: The Sample set was pretty small)*
 
 **Per-Task-Type Accuracy:**
 
