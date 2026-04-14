@@ -17,32 +17,22 @@ from typing import Dict, Any, List
 
 TOOL_CHAINS = {
     "verification": [
-        "search_literature",   # 1. Gather evidence first
-        "lookup_taxonomy",     # 2. Ground in ontology
-        "verify_logic",        # 3. Then run Z3 verifier
-        "summarize_context",   # 4. Compress for output
+        "search_literature",   # 1. Gather evidence
+        "verify_logic",        # 2. Verify
     ],
     "hypothesis": [
-        "search_literature",   # 1. Gather domain context
-        "explore_citations",   # 2. Explore citation network
-        "generate_hypothesis", # 3. Generate novel hypothesis
-        "verify_logic",        # 4. Verify logical consistency
-        "summarize_context",   # 5. Summarize findings
+        "search_literature",   # 1. Gather context
+        "generate_hypothesis", # 2. Generate
     ],
     "citation": [
-        "search_literature",   # 1. Find the paper first
-        "explore_citations",   # 2. Explore citation graph
-        "lookup_taxonomy",     # 3. Categorise results
-        "summarize_context",   # 4. Compress
+        "explore_citations",   # 1. Explore graph directly
     ],
     "summarization": [
-        "search_literature",   # 1. Retrieve relevant papers
-        "lookup_taxonomy",     # 2. Get taxonomic context
-        "summarize_context",   # 3. Compress into summary
+        "search_literature",   # 1. Retrieve
+        "summarize_context",   # 2. Compress
     ],
     "default": [
-        "search_literature",   # 1. Always start with search
-        "summarize_context",   # 2. Compress if large
+        "search_literature",   # 1. Just search
     ],
 }
 
