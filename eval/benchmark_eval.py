@@ -227,7 +227,7 @@ def eval_bbh(model, tok, model_tag, n=100):
     examples = []
     for sub in BBH_SUBTASKS:
         try:
-            sub_ds = load_dataset("maveriq/bigbenchhard", sub, split="train")
+            sub_ds = load_dataset("lukaemon/bbh", sub, split="test")
             for ex in sub_ds:
                 examples.append({**ex, "_sub": sub})
         except Exception:
