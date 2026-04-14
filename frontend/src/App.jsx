@@ -297,8 +297,8 @@ function App() {
       {messages.length === 1 && !loading && (
         <div className="suggestions">
           {[
-            "Find papers on graph neural networks",
-            "Generate hypothesis on transformer attention",
+            "Verify logic: LLMs hallucinate citations less than humans",
+            "Generate hypothesis connecting DNA and machine learning",
             "Explore citations for arxiv:2603.25740"
           ].map(s => (
             <button key={s} className="chip" onClick={() => setInput(s)}>{s}</button>
