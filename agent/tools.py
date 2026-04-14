@@ -103,21 +103,40 @@ def search_literature(query: str, top_k: int = 5):
         return {"error": "FAISS index not built or loaded."}
         
     q_emb = _embedder.encode([query])
-    D, I = _index.search(q_emb, k=top_k)
+    D, I = _index.search(q_emb, k=top_k * 2)  # Search deeper to allow for filtering
     results = []
     
+    # Simple stopword list to prevent matching on common words
+    stop_words = {"the", "a", "an", "is", "of", "and", "in", "to", "for", "on", "with", "about", "tell", "me", "what", "how", "why"}
+    q_words = set(w.lower() for w in query.split() if w.lower() not in stop_words and len(w) > 2)
+    
     for dist, idx in zip(D[0], I[0]):
-        # FAISS inner-product: higher = more similar. 
-        # For L2 distances, lower = more similar; filter out low-quality hits.
+        # Filter out invalid indices or low-quality hits.
         if idx == -1 or idx >= len(_papers_data):
             continue
+            
         p = _papers_data[idx]
         title = p.get('title', 'Unknown')
-        abstract = p.get('abstract', '')[:250]
-        results.append(f"**{title}**\n{abstract}...")
+        abstract = p.get('abstract', '')
+        
+        # Relevance Filter: If there are meaningful keywords in the query,
+        # require at least ONE of them to appear in the title or abstract.
+        # This prevents FAISS from returning random papers for out-of-distribution queries (e.g. 'Mona Lisa')
+        if q_words:
+            content = f"{title} {abstract}".lower()
+            if not any(qw in content for qw in q_words):
+                continue
+                
+        abstract_snippet = abstract[:250]
+        results.append(f"**{title}**\n{abstract_snippet}...")
+        
+        if len(results) >= top_k:
+            break
             
     if not results:
-        return {"results": [f"No closely related papers found in the database for: '{query}'"]}
+        # Provide a clear, natural message for the frontend
+        return {"message": f"No closely related scientific papers found in the database for: '{query}'."}
+        
     return {"results": results}
 
 def explore_citations(paper_id: str, depth: int = 1):
