@@ -1,0 +1,100 @@
+{
+  "timestamp": "2026-04-14T20:39:27.814662",
+  "stage": "model_benchmark",
+  "models": {
+    "base": {
+      "mmlu": {
+        "benchmark": "MMLU",
+        "accuracy": 0.655,
+        "correct": 131,
+        "total": 200,
+        "hallucination_rate": null,
+        "total_tokens": 85176,
+        "cost": 0.1704,
+        "latency_sec": 68.47,
+        "context_efficiency": 650.2
+      },
+      "bbh": {
+        "benchmark": "Big-Bench Hard",
+        "accuracy": 0.1,
+        "correct": 10,
+        "total": 100,
+        "hallucination_rate": null,
+        "total_tokens": 48237,
+        "cost": 0.0965,
+        "latency_sec": 1180.25,
+        "context_efficiency": 4823.7
+      },
+      "truthfulqa": {
+        "benchmark": "TruthfulQA (MC1)",
+        "accuracy": 0.4162,
+        "correct": 340,
+        "total": 817,
+        "hallucination_rate": 0.5838,
+        "total_tokens": 35069,
+        "cost": 0.0701,
+        "latency_sec": 190.48,
+        "context_efficiency": 103.14
+      },
+      "domain_qa": {
+        "benchmark": "Domain QA (Scientific)",
+        "accuracy": 0.0,
+        "word_overlap": 0.3791,
+        "correct": 0,
+        "total": 100,
+        "hallucination_rate": 0.6209,
+        "total_tokens": 19497,
+        "cost": 0.039,
+        "latency_sec": 733.68,
+        "context_efficiency": 19497.0
+      }
+    },
+    "fine_tuned": {
+      "mmlu": {
+        "benchmark": "MMLU",
+        "accuracy": 0.705,
+        "correct": 141,
+        "total": 200,
+        "hallucination_rate": null,
+        "total_tokens": 86376,
+        "cost": 0.1728,
+        "latency_sec": 69.68,
+        "context_efficiency": 612.6
+      },
+      "bbh": {
+        "benchmark": "Big-Bench Hard",
+        "accuracy": 0.36,
+        "correct": 36,
+        "total": 100,
+        "hallucination_rate": null,
+        "total_tokens": 45251,
+        "cost": 0.0905,
+        "latency_sec": 1029.46,
+        "context_efficiency": 1256.97
+      },
+      "truthfulqa": {
+        "benchmark": "TruthfulQA (MC1)",
+        "accuracy": 0.4272,
+        "correct": 349,
+        "total": 817,
+        "hallucination_rate": 0.5728,
+        "total_tokens": 44056,
+        "cost": 0.0881,
+        "latency_sec": 196.7,
+        "context_efficiency": 126.23
+      },
+      "domain_qa": {
+        "benchmark": "Domain QA (Scientific)",
+        "accuracy": 0.0,
+        "word_overlap": 0.5038,
+        "correct": 0,
+        "total": 100,
+        "hallucination_rate": 0.4962,
+        "total_tokens": 14785,
+        "cost": 0.0296,
+        "latency_sec": 418.2,
+        "context_efficiency": 14785.0
+      }
+    }
+  }
+}

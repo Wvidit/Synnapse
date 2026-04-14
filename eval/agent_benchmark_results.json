@@ -1,0 +1,258 @@
+{
+  "timestamp": "2026-04-14T21:49:19.548089",
+  "stage": "agent_benchmark",
+  "agents": {
+    "baseline": {
+      "agent": "baseline",
+      "label": "Baseline LLM Agent",
+      "accuracy": 0.8,
+      "hallucination_rate": 0.3774,
+      "total_tokens": 2320,
+      "avg_tokens_per_query": 232,
+      "avg_cost_per_query": 0.0005,
+      "avg_latency_sec": 0.83,
+      "context_efficiency": 290.0,
+      "tasks_evaluated": 10,
+      "details": [
+        {
+          "query": "Find papers on contrastive learning.",
+          "type": "single-hop",
+          "success": true,
+          "plausibility": 0.633,
+          "steps": 3,
+          "tokens": 227,
+          "latency_sec": 1.38
+        },
+        {
+          "query": "Find papers about transformer architectures for NLP.",
+          "type": "single-hop",
+          "success": true,
+          "plausibility": 0.633,
+          "steps": 3,
+          "tokens": 246,
+          "latency_sec": 1.36
+        },
+        {
+          "query": "Search for recent work on graph neural networks.",
+          "type": "single-hop",
+          "success": true,
+          "plausibility": 0.9,
+          "steps": 3,
+          "tokens": 232,
+          "latency_sec": 1.36
+        },
+        {
+          "query": "Find papers that contradict Vaswani et al. 2017 attention mechanism.",
+          "type": "multi-hop",
+          "success": false,
+          "plausibility": 0.5,
+          "steps": 3,
+          "tokens": 232,
+          "latency_sec": 0.01
+        },
+        {
+          "query": "Explore citations of papers on reinforcement learning from human feedback.",
+          "type": "multi-hop",
+          "success": true,
+          "plausibility": 0.633,
+          "steps": 3,
+          "tokens": 228,
+          "latency_sec": 1.37
+        },
+        {
+          "query": "Propose a hypothesis about how knowledge graphs improve language model factuality.",
+          "type": "hypothesis",
+          "success": true,
+          "plausibility": 0.58,
+          "steps": 3,
+          "tokens": 242,
+          "latency_sec": 1.38
+        },
+        {
+          "query": "Generate a hypothesis about combining symbolic reasoning with neural networks.",
+          "type": "hypothesis",
+          "success": true,
+          "plausibility": 0.58,
+          "steps": 3,
+          "tokens": 243,
+          "latency_sec": 1.38
+        },
+        {
+          "query": "Is the claim that 'graph neural networks improve sample efficiency' logically consistent with recent publications?",
+          "type": "verification",
+          "success": true,
+          "plausibility": 0.567,
+          "steps": 3,
+          "tokens": 237,
+          "latency_sec": 0.01
+        },
+        {
+          "query": "Verify whether attention mechanisms contradict recurrent architectures.",
+          "type": "verification",
+          "success": false,
+          "plausibility": 0.5,
+          "steps": 3,
+          "tokens": 220,
+          "latency_sec": 0.01
+        },
+        {
+          "query": "Summarize the state of research on diffusion models for image generation.",
+          "type": "summarization",
+          "success": true,
+          "plausibility": 0.7,
+          "steps": 3,
+          "tokens": 213,
+          "latency_sec": 0.01
+        }
+      ],
+      "per_type": {
+        "hypothesis": {
+          "accuracy": 1.0,
+          "count": 2
+        },
+        "multi-hop": {
+          "accuracy": 0.5,
+          "count": 2
+        },
+        "single-hop": {
+          "accuracy": 1.0,
+          "count": 3
+        },
+        "summarization": {
+          "accuracy": 1.0,
+          "count": 1
+        },
+        "verification": {
+          "accuracy": 0.5,
+          "count": 2
+        }
+      }
+    },
+    "neurosymbolic": {
+      "agent": "neurosymbolic",
+      "label": "Neurosymbolic Agent (Synnapse)",
+      "accuracy": 1.0,
+      "hallucination_rate": 0.1264,
+      "total_tokens": 2908,
+      "avg_tokens_per_query": 291,
+      "avg_cost_per_query": 0.0006,
+      "avg_latency_sec": 0.82,
+      "context_efficiency": 290.8,
+      "tasks_evaluated": 10,
+      "details": [
+        {
+          "query": "Find papers on contrastive learning.",
+          "type": "single-hop",
+          "success": true,
+          "plausibility": 0.733,
+          "steps": 5,
+          "tokens": 245,
+          "latency_sec": 1.37
+        },
+        {
+          "query": "Find papers about transformer architectures for NLP.",
+          "type": "single-hop",
+          "success": true,
+          "plausibility": 0.733,
+          "steps": 5,
+          "tokens": 264,
+          "latency_sec": 1.37
+        },
+        {
+          "query": "Search for recent work on graph neural networks.",
+          "type": "single-hop",
+          "success": true,
+          "plausibility": 1.0,
+          "steps": 5,
+          "tokens": 286,
+          "latency_sec": 1.36
+        },
+        {
+          "query": "Find papers that contradict Vaswani et al. 2017 attention mechanism.",
+          "type": "multi-hop",
+          "success": true,
+          "plausibility": 1.0,
+          "steps": 5,
+          "tokens": 306,
+          "latency_sec": 0.01
+        },
+        {
+          "query": "Explore citations of papers on reinforcement learning from human feedback.",
+          "type": "multi-hop",
+          "success": true,
+          "plausibility": 0.733,
+          "steps": 5,
+          "tokens": 246,
+          "latency_sec": 1.37
+        },
+        {
+          "query": "Propose a hypothesis about how knowledge graphs improve language model factuality.",
+          "type": "hypothesis",
+          "success": true,
+          "plausibility": 1.0,
+          "steps": 6,
+          "tokens": 363,
+          "latency_sec": 1.37
+        },
+        {
+          "query": "Generate a hypothesis about combining symbolic reasoning with neural networks.",
+          "type": "hypothesis",
+          "success": true,
+          "plausibility": 1.0,
+          "steps": 6,
+          "tokens": 365,
+          "latency_sec": 1.37
+        },
+        {
+          "query": "Is the claim that 'graph neural networks improve sample efficiency' logically consistent with recent publications?",
+          "type": "verification",
+          "success": true,
+          "plausibility": 0.867,
+          "steps": 5,
+          "tokens": 319,
+          "latency_sec": 0.01
+        },
+        {
+          "query": "Verify whether attention mechanisms contradict recurrent architectures.",
+          "type": "verification",
+          "success": true,
+          "plausibility": 0.92,
+          "steps": 5,
+          "tokens": 289,
+          "latency_sec": 0.01
+        },
+        {
+          "query": "Summarize the state of research on diffusion models for image generation.",
+          "type": "summarization",
+          "success": true,
+          "plausibility": 0.75,
+          "steps": 4,
+          "tokens": 225,
+          "latency_sec": 0.01
+        }
+      ],
+      "per_type": {
+        "hypothesis": {
+          "accuracy": 1.0,
+          "count": 2
+        },
+        "multi-hop": {
+          "accuracy": 1.0,
+          "count": 2
+        },
+        "single-hop": {
+          "accuracy": 1.0,
+          "count": 3
+        },
+        "summarization": {
+          "accuracy": 1.0,
+          "count": 1
+        },
+        "verification": {
+          "accuracy": 1.0,
+          "count": 2
+        }
+      }
+    }
+  }
+}
