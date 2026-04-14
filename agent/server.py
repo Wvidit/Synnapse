@@ -221,7 +221,9 @@ def run_agent(req: QueryRequest):
         tools_used.append(tool_name)
 
         # 4. Add to context with policy-based management
-        new_entry = f"Action: {tool_name}\nObservation: {observation}"
+        import json
+        obs_str = json.dumps(observation) if isinstance(observation, (dict, list)) else str(observation)
+        new_entry = f"Action: {tool_name}\nObservation: {obs_str}"
         context = _apply_context_policy(
             context, new_entry, req.context_policy, req.token_budget
         )
@@ -230,7 +232,7 @@ def run_agent(req: QueryRequest):
         if tool_name == "summarize_context" and req.context_policy == "compression_cache":
             current_tokens = _estimate_tokens(" ".join(context))
         else:
-            current_tokens += _estimate_tokens(str(observation))
+            current_tokens += _estimate_tokens(obs_str)
 
     return {
         "status": "success",
