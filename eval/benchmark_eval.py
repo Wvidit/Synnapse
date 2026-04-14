@@ -1,17 +1,25 @@
 """
-Benchmark Evaluation Script for Synnapse-Qwen2.5-3B
-====================================================
-Evaluates the fine-tuned model against the base Qwen2.5-3B-Instruct
-on three standard LLM benchmarks:
+Model Benchmarking — Synnapse Evaluation Pipeline (Stage 1)
+============================================================
+Evaluate whether domain-specific continued pretraining improves performance.
 
-  1. MMLU        — 5-shot MCQ, log-likelihood scoring       (Accuracy)
-  2. Big-Bench Hard — 3-shot CoT, exact-match generation    (Accuracy)
-  3. TruthfulQA  — 0-shot MC1, log-likelihood scoring       (MC1 Accuracy)
+Compares base model vs fine-tuned model on:
+  1. MMLU        — 5-shot MCQ, log-likelihood scoring
+  2. Big-Bench Hard — 3-shot CoT, exact-match generation
+  3. TruthfulQA  — 0-shot MC1, log-likelihood scoring (hallucination detection)
+
+Metrics tracked per benchmark:
+  - Task Success Rate (Accuracy)
+  - Hallucination Rate (1 - TruthfulQA accuracy)
+  - Token Usage
+  - Cost per Query
+  - Latency
+  - Context Efficiency (tokens per correct answer)
 
 Usage:
     python -m eval.benchmark_eval                  # default (200 MMLU, 100 BBH, full TruthfulQA)
     python -m eval.benchmark_eval --samples 20     # quick smoke-test
-    python -m eval.benchmark_eval --full            # evaluate on complete datasets
+    python -m eval.benchmark_eval --full           # full datasets
 """
 
 import argparse
@@ -27,523 +35,343 @@ import torch.nn.functional as F
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Configuration
-# ────────────────────────────────────────────────────────────────────────────────
+# ─── Configuration ────────────────────────────────────────────────────────────
 
 BASE_MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
 FT_MODEL_NAME   = "Wvidit/Qwen-3-grpo"
-RESULTS_PATH    = Path(__file__).parent / "benchmark_results.json"
+RESULTS_DIR     = Path(__file__).parent
+RESULTS_PATH    = RESULTS_DIR / "benchmark_results.json"
 
-MMLU_CHOICES   = ["A", "B", "C", "D"]
+MMLU_CHOICES = ["A", "B", "C", "D"]
+COST_PER_1K_TOKENS = 0.002   # estimated $/1K tokens for local inference equiv.
 
-# BBH 3-shot exemplars (generic CoT style — works across subtasks)
 BBH_FEW_SHOT = [
-    {
-        "input":  "If the first two statements are true, is the third statement true?\n"
-                  "Statement 1: All dogs are animals.\n"
-                  "Statement 2: All animals are living things.\n"
-                  "Statement 3: All dogs are living things.",
-        "target": "Yes"
-    },
-    {
-        "input":  "Which of the following is a valid conclusion?\n"
-                  "Premise 1: If it rains, the ground gets wet.\n"
-                  "Premise 2: It rained.\n"
-                  "Conclusion: The ground is wet.",
-        "target": "Yes"
-    },
-    {
-        "input":  "Choose the most logical completion: The chef cooked the meal and then ___.\n"
-                  "(A) served it   (B) ignored it   (C) deleted it",
-        "target": "(A)"
-    },
+    {"input": "If all dogs are animals and all animals are living things, are all dogs living things?", "target": "Yes"},
+    {"input": "If it rains the ground gets wet. It rained. Is the ground wet?", "target": "Yes"},
+    {"input": "Choose: The chef cooked the meal and then ___. (A) served it (B) ignored it (C) deleted it", "target": "(A)"},
 ]
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Helpers
-# ────────────────────────────────────────────────────────────────────────────────
+BBH_SUBTASKS = [
+    "boolean_expressions", "causal_judgement", "date_understanding",
+    "disambiguation_qa", "formal_fallacies", "geometric_shapes",
+    "hyperbaton", "logical_deduction_five_objects", "movie_recommendation",
+    "navigate", "object_counting", "penguins_in_a_table",
+    "reasoning_about_colored_objects", "ruin_names",
+    "salient_translation_error_detection", "snarks", "sports_understanding",
+    "temporal_sequences", "tracking_shuffled_objects_three_objects",
+    "web_of_lies", "word_sorting",
+]
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def strip_think_tags(text: str) -> str:
-    """Strip <think>...</think> reasoning blocks emitted by Qwen models."""
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
-def load_model_and_tokenizer(model_name: str, device_map: str = "auto"):
-    """Load a causal LM + tokenizer with bfloat16 weights."""
-    print(f"  Loading {model_name} ...")
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+def load_model_and_tokenizer(name: str):
+    print(f"  Loading {name} ...")
+    tok = AutoTokenizer.from_pretrained(name)
+    if tok.pad_token is None:
+        tok.pad_token = tok.eos_token
     model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        device_map=device_map,
-        torch_dtype=torch.bfloat16,
+        name, device_map="auto", torch_dtype=torch.bfloat16
     )
     model.eval()
-    return model, tokenizer
+    return model, tok
 
 
-def build_chat_prompt(system: str, user: str, tokenizer) -> str:
-    """Apply the ChatML template that Qwen expects."""
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user",   "content": user},
-    ]
-    return tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
+def chat_prompt(system: str, user: str, tok) -> str:
+    return tok.apply_chat_template(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        tokenize=False, add_generation_prompt=True,
     )
 
 
 @torch.no_grad()
-def score_completions(prompt: str, completions: list[str], model, tokenizer) -> list[float]:
-    """
-    Return the mean log-probability that `model` assigns to each candidate
-    completion, given `prompt` as prefix.
-    """
+def score_choices(prompt: str, choices: list[str], model, tok) -> list[float]:
+    """Log-likelihood scoring for MCQ options."""
     scores = []
-    for comp in completions:
-        full_text = prompt + comp
-        enc = tokenizer(full_text, return_tensors="pt").to(model.device)
-        prompt_len = tokenizer(prompt, return_tensors="pt")["input_ids"].shape[1]
-
-        outputs = model(**enc)
-        logits  = outputs.logits  # (1, seq_len, vocab)
-
-        # Shift: logits[t] predicts token[t+1]
-        shift_logits = logits[0, prompt_len - 1 : -1, :]
-        shift_labels = enc["input_ids"][0, prompt_len:]
-
-        log_probs = F.log_softmax(shift_logits, dim=-1)
-        token_lps = log_probs.gather(1, shift_labels.unsqueeze(1)).squeeze(1)
-
-        # Mean log-prob (length-normalised)
+    for c in choices:
+        full = prompt + c
+        enc = tok(full, return_tensors="pt").to(model.device)
+        plen = tok(prompt, return_tensors="pt")["input_ids"].shape[1]
+        logits = model(**enc).logits
+        shift_logits = logits[0, plen - 1:-1, :]
+        shift_labels = enc["input_ids"][0, plen:]
+        lps = F.log_softmax(shift_logits, dim=-1)
+        token_lps = lps.gather(1, shift_labels.unsqueeze(1)).squeeze(1)
         scores.append(token_lps.mean().item())
     return scores
 
 
 @torch.no_grad()
-def generate_text(prompt: str, model, tokenizer, max_new_tokens: int = 256) -> str:
-    """Generate text from a prompt, stripping think tags."""
-    enc = tokenizer(prompt, return_tensors="pt").to(model.device)
-    out = model.generate(
-        **enc,
-        max_new_tokens=max_new_tokens,
-        do_sample=False,          # greedy for reproducibility
-        temperature=1.0,
-    )
-    new_tokens = out[0][enc["input_ids"].shape[1]:]
-    return strip_think_tags(tokenizer.decode(new_tokens, skip_special_tokens=True))
+def generate(prompt: str, model, tok, max_tokens: int = 256) -> str:
+    enc = tok(prompt, return_tensors="pt").to(model.device)
+    out = model.generate(**enc, max_new_tokens=max_tokens, do_sample=False)
+    return strip_think_tags(tok.decode(out[0][enc["input_ids"].shape[1]:], skip_special_tokens=True))
 
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Benchmark 1 – MMLU (5-shot, log-likelihood MCQ)
-# ────────────────────────────────────────────────────────────────────────────────
+# ─── MMLU ─────────────────────────────────────────────────────────────────────
 
-def _build_mmlu_few_shot_prefix(few_shot_examples: list[dict]) -> str:
-    """Build the 5-shot exemplar prefix from MMLU examples."""
+def _mmlu_few_shot(dev_ds):
     lines = []
-    for ex in few_shot_examples:
-        q = ex["question"]
-        choices = [ex[f"choices"][i] for i in range(4)]
-        ans_idx = ex["answer"]
+    for ex in list(dev_ds)[:5]:
+        ch = ex["choices"]
         lines.append(
-            f"Question: {q}\n"
-            f"A. {choices[0]}\nB. {choices[1]}\nC. {choices[2]}\nD. {choices[3]}\n"
-            f"Answer: {MMLU_CHOICES[ans_idx]}"
+            f"Question: {ex['question']}\nA. {ch[0]}\nB. {ch[1]}\nC. {ch[2]}\nD. {ch[3]}\n"
+            f"Answer: {MMLU_CHOICES[ex['answer']]}"
         )
     return "\n\n".join(lines)
 
 
-def evaluate_mmlu(model, tokenizer, n_samples: int | None = 200) -> dict:
-    """Evaluate MMLU accuracy using log-likelihood scoring."""
+def eval_mmlu(model, tok, n=200):
     print("\n" + "=" * 60)
-    print("BENCHMARK: MMLU (Massive Multitask Language Understanding)")
+    print("  BENCHMARK: MMLU")
     print("=" * 60)
 
     ds = load_dataset("cais/mmlu", "all", split="test")
-    ds_dev = load_dataset("cais/mmlu", "all", split="dev")
+    dev = load_dataset("cais/mmlu", "all", split="dev")
+    prefix = _mmlu_few_shot(dev)
 
-    # Use first 5 dev examples as few-shot
-    few_shot_prefix = _build_mmlu_few_shot_prefix(
-        [ds_dev[i] for i in range(min(5, len(ds_dev)))]
-    )
+    if n: ds = ds.shuffle(seed=42).select(range(min(n, len(ds))))
 
-    if n_samples is not None:
-        ds = ds.shuffle(seed=42).select(range(min(n_samples, len(ds))))
-
-    correct = 0
-    total   = 0
-    subject_stats: dict[str, dict] = {}
+    correct = total = total_tokens = 0
+    t0 = time.time()
 
     for i, ex in enumerate(ds):
-        question = ex["question"]
-        choices  = [ex["choices"][j] for j in range(4)]
-        label    = ex["answer"]  # int 0-3
-        subject  = ex.get("subject", "unknown")
-
-        user_text = (
-            f"{few_shot_prefix}\n\n"
-            f"Question: {question}\n"
-            f"A. {choices[0]}\nB. {choices[1]}\nC. {choices[2]}\nD. {choices[3]}\n"
-            f"Answer:"
+        ch = ex["choices"]
+        user = (
+            f"{prefix}\n\nQuestion: {ex['question']}\n"
+            f"A. {ch[0]}\nB. {ch[1]}\nC. {ch[2]}\nD. {ch[3]}\nAnswer:"
         )
+        p = chat_prompt("Answer with only the letter of the correct option.", user, tok)
+        tokens_used = len(tok(p)["input_ids"])
+        total_tokens += tokens_used
 
-        prompt = build_chat_prompt(
-            "You are a knowledgeable assistant. Answer each multiple-choice question with only the letter of the correct option.",
-            user_text,
-            tokenizer,
-        )
-
-        # Score each option letter
-        candidate_scores = score_completions(
-            prompt, [f" {c}" for c in MMLU_CHOICES], model, tokenizer
-        )
-        pred = int(torch.tensor(candidate_scores).argmax().item())
-
-        if pred == label:
-            correct += 1
-
-        # Per-subject tracking
-        if subject not in subject_stats:
-            subject_stats[subject] = {"correct": 0, "total": 0}
-        subject_stats[subject]["total"]   += 1
-        subject_stats[subject]["correct"] += int(pred == label)
-
+        sc = score_choices(p, [f" {c}" for c in MMLU_CHOICES], model, tok)
+        pred = int(torch.tensor(sc).argmax())
+        correct += int(pred == ex["answer"])
         total += 1
-        if (i + 1) % 50 == 0:
-            print(f"  [{i+1}/{len(ds)}]  running acc = {correct/total:.2%}")
 
-    accuracy = correct / total if total else 0
-    print(f"\n  MMLU Accuracy: {correct}/{total} = {accuracy:.2%}")
+        if (i + 1) % 50 == 0:
+            print(f"  [{i+1}/{len(ds)}] acc={correct/total:.2%}")
+
+    elapsed = time.time() - t0
+    acc = correct / total if total else 0
+    print(f"  MMLU: {correct}/{total} = {acc:.2%}  ({elapsed:.1f}s)")
 
     return {
         "benchmark": "MMLU",
-        "accuracy":  round(accuracy, 4),
-        "correct":   correct,
-        "total":     total,
-        "per_subject": {
-            k: round(v["correct"] / v["total"], 4) if v["total"] else 0
-            for k, v in subject_stats.items()
-        },
+        "accuracy": round(acc, 4),
+        "correct": correct, "total": total,
+        "hallucination_rate": None,
+        "total_tokens": total_tokens,
+        "cost": round(total_tokens / 1000 * COST_PER_1K_TOKENS, 4),
+        "latency_sec": round(elapsed, 2),
+        "context_efficiency": round(total_tokens / max(correct, 1), 2),
     }
 
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Benchmark 2 – Big-Bench Hard (3-shot CoT, exact-match)
-# ────────────────────────────────────────────────────────────────────────────────
+# ─── Big-Bench Hard ──────────────────────────────────────────────────────────
 
-def _bbh_extract_answer(text: str) -> str:
-    """Extract the final answer from BBH CoT output."""
-    text = text.strip()
-    # Look for "the answer is X" pattern
+def _bbh_extract(text):
     m = re.search(r"(?:the answer is|answer:)\s*(.+?)(?:\.|$)", text, re.I)
-    if m:
-        return m.group(1).strip().rstrip(".")
-    # Fallback: last line
+    if m: return m.group(1).strip().rstrip(".")
     lines = text.strip().splitlines()
     return lines[-1].strip() if lines else ""
 
 
-def evaluate_bbh(model, tokenizer, n_samples: int | None = 100) -> dict:
-    """Evaluate Big-Bench Hard accuracy using few-shot CoT generation."""
+def eval_bbh(model, tok, n=100):
     print("\n" + "=" * 60)
-    print("BENCHMARK: Big-Bench Hard (BBH)")
+    print("  BENCHMARK: Big-Bench Hard")
     print("=" * 60)
-
-    # Load a BBH subset — boolean_expressions is a reliable subtask
-    subtasks_to_try = [
-        "boolean_expressions",
-        "causal_judgement",
-        "date_understanding",
-        "disambiguation_qa",
-        "formal_fallacies",
-        "geometric_shapes",
-        "hyperbaton",
-        "logical_deduction_five_objects",
-        "movie_recommendation",
-        "navigate",
-        "object_counting",
-        "penguins_in_a_table",
-        "reasoning_about_colored_objects",
-        "ruin_names",
-        "salient_translation_error_detection",
-        "snarks",
-        "sports_understanding",
-        "temporal_sequences",
-        "tracking_shuffled_objects_three_objects",
-        "web_of_lies",
-        "word_sorting",
-    ]
-
-    all_examples = []
-    for subtask in subtasks_to_try:
-        try:
-            sub_ds = load_dataset("maveriq/bigbenchhard", subtask, split="train")
-            for ex in sub_ds:
-                all_examples.append({**ex, "_subtask": subtask})
-        except Exception:
-            continue  # subtask may not be available
-
-    if not all_examples:
-        print("  WARNING: Could not load any BBH subtasks. Skipping.")
-        return {"benchmark": "BBH", "accuracy": None, "correct": 0, "total": 0}
 
     import random
     random.seed(42)
-    random.shuffle(all_examples)
-    if n_samples is not None:
-        all_examples = all_examples[:n_samples]
 
-    # Build few-shot prefix
-    few_shot_lines = []
-    for fs in BBH_FEW_SHOT:
-        few_shot_lines.append(
-            f"Q: {fs['input']}\n"
-            f"A: Let's think step by step. The answer is {fs['target']}."
-        )
-    few_shot_prefix = "\n\n".join(few_shot_lines)
+    examples = []
+    for sub in BBH_SUBTASKS:
+        try:
+            sub_ds = load_dataset("maveriq/bigbenchhard", sub, split="train")
+            for ex in sub_ds:
+                examples.append({**ex, "_sub": sub})
+        except Exception:
+            continue
 
-    correct = 0
-    total   = 0
-    subtask_stats: dict[str, dict] = {}
+    if not examples:
+        print("  WARNING: Could not load BBH. Skipping.")
+        return {"benchmark": "Big-Bench Hard", "accuracy": None, "correct": 0, "total": 0,
+                "hallucination_rate": None, "total_tokens": 0, "cost": 0, "latency_sec": 0,
+                "context_efficiency": 0}
 
-    for i, ex in enumerate(all_examples):
-        inp    = ex["input"]
-        target = ex["target"].strip()
-        subtask = ex["_subtask"]
+    random.shuffle(examples)
+    if n: examples = examples[:n]
 
-        user_text = (
-            f"{few_shot_prefix}\n\n"
-            f"Q: {inp}\n"
-            f"A: Let's think step by step."
-        )
+    fs = "\n\n".join(
+        f"Q: {f['input']}\nA: Let's think step by step. The answer is {f['target']}."
+        for f in BBH_FEW_SHOT
+    )
 
-        prompt = build_chat_prompt(
-            "You are a helpful assistant. Solve the problem step by step and give a final answer.",
-            user_text,
-            tokenizer,
-        )
+    correct = total = total_tokens = 0
+    t0 = time.time()
 
-        response = generate_text(prompt, model, tokenizer, max_new_tokens=256)
-        pred = _bbh_extract_answer(response)
+    for i, ex in enumerate(examples):
+        user = f"{fs}\n\nQ: {ex['input']}\nA: Let's think step by step."
+        p = chat_prompt("Solve step by step and give a final answer.", user, tok)
+        total_tokens += len(tok(p)["input_ids"])
 
-        # Normalize comparison
-        is_correct = pred.strip().lower() == target.strip().lower()
-        if is_correct:
+        resp = generate(p, model, tok, max_tokens=256)
+        total_tokens += len(tok(resp)["input_ids"])
+
+        pred = _bbh_extract(resp)
+        if pred.strip().lower() == ex["target"].strip().lower():
             correct += 1
-
-        if subtask not in subtask_stats:
-            subtask_stats[subtask] = {"correct": 0, "total": 0}
-        subtask_stats[subtask]["total"] += 1
-        subtask_stats[subtask]["correct"] += int(is_correct)
-
         total += 1
-        if (i + 1) % 25 == 0:
-            print(f"  [{i+1}/{len(all_examples)}]  running acc = {correct/total:.2%}")
 
-    accuracy = correct / total if total else 0
-    print(f"\n  BBH Accuracy: {correct}/{total} = {accuracy:.2%}")
+        if (i + 1) % 25 == 0:
+            print(f"  [{i+1}/{len(examples)}] acc={correct/total:.2%}")
+
+    elapsed = time.time() - t0
+    acc = correct / total if total else 0
+    print(f"  BBH: {correct}/{total} = {acc:.2%}  ({elapsed:.1f}s)")
 
     return {
-        "benchmark":    "Big-Bench Hard",
-        "accuracy":     round(accuracy, 4),
-        "correct":      correct,
-        "total":        total,
-        "per_subtask": {
-            k: round(v["correct"] / v["total"], 4) if v["total"] else 0
-            for k, v in subtask_stats.items()
-        },
+        "benchmark": "Big-Bench Hard",
+        "accuracy": round(acc, 4),
+        "correct": correct, "total": total,
+        "hallucination_rate": None,
+        "total_tokens": total_tokens,
+        "cost": round(total_tokens / 1000 * COST_PER_1K_TOKENS, 4),
+        "latency_sec": round(elapsed, 2),
+        "context_efficiency": round(total_tokens / max(correct, 1), 2),
     }
 
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Benchmark 3 – TruthfulQA (MC1, log-likelihood)
-# ────────────────────────────────────────────────────────────────────────────────
+# ─── TruthfulQA ──────────────────────────────────────────────────────────────
 
-def evaluate_truthfulqa(model, tokenizer, n_samples: int | None = None) -> dict:
-    """Evaluate TruthfulQA MC1 accuracy using log-likelihood scoring."""
+def eval_truthfulqa(model, tok, n=None):
     print("\n" + "=" * 60)
-    print("BENCHMARK: TruthfulQA (MC1)")
+    print("  BENCHMARK: TruthfulQA (MC1 — Hallucination Detection)")
     print("=" * 60)
 
     ds = load_dataset("truthfulqa/truthful_qa", "multiple_choice", split="validation")
+    if n: ds = ds.shuffle(seed=42).select(range(min(n, len(ds))))
 
-    if n_samples is not None:
-        ds = ds.shuffle(seed=42).select(range(min(n_samples, len(ds))))
-
-    correct = 0
-    total   = 0
+    correct = total = total_tokens = 0
+    t0 = time.time()
 
     for i, ex in enumerate(ds):
-        question = ex["question"]
-        # MC1: single correct answer is first, rest are wrong
-        mc1_targets  = ex["mc1_targets"]
-        choices      = mc1_targets["choices"]
-        labels       = mc1_targets["labels"]   # list of 0/1, exactly one 1
-
-        if not choices or sum(labels) == 0:
-            continue
-
+        choices = ex["mc1_targets"]["choices"]
+        labels  = ex["mc1_targets"]["labels"]
+        if not choices or sum(labels) == 0: continue
         true_idx = labels.index(1)
 
-        user_text = f"Question: {question}\nAnswer:"
+        user = f"Question: {ex['question']}\nAnswer:"
+        p = chat_prompt("Answer the question accurately and truthfully.", user, tok)
+        total_tokens += len(tok(p)["input_ids"])
 
-        prompt = build_chat_prompt(
-            "You are a helpful and truthful assistant. Answer the question accurately.",
-            user_text,
-            tokenizer,
-        )
-
-        # Score each candidate completion
-        candidate_scores = score_completions(
-            prompt, [f" {c}" for c in choices], model, tokenizer
-        )
-        pred = int(torch.tensor(candidate_scores).argmax().item())
-
-        if pred == true_idx:
-            correct += 1
-
+        sc = score_choices(p, [f" {c}" for c in choices], model, tok)
+        pred = int(torch.tensor(sc).argmax())
+        correct += int(pred == true_idx)
         total += 1
-        if (i + 1) % 50 == 0:
-            print(f"  [{i+1}/{len(ds)}]  running acc = {correct/total:.2%}")
 
-    accuracy = correct / total if total else 0
-    print(f"\n  TruthfulQA MC1 Accuracy: {correct}/{total} = {accuracy:.2%}")
+        if (i + 1) % 50 == 0:
+            print(f"  [{i+1}/{len(ds)}] acc={correct/total:.2%}")
+
+    elapsed = time.time() - t0
+    acc = correct / total if total else 0
+    hall = round(1 - acc, 4)
+    print(f"  TruthfulQA MC1: {correct}/{total} = {acc:.2%}  (Hallucination: {hall:.2%})")
 
     return {
         "benchmark": "TruthfulQA (MC1)",
-        "accuracy":  round(accuracy, 4),
-        "correct":   correct,
-        "total":     total,
+        "accuracy": round(acc, 4),
+        "correct": correct, "total": total,
+        "hallucination_rate": hall,
+        "total_tokens": total_tokens,
+        "cost": round(total_tokens / 1000 * COST_PER_1K_TOKENS, 4),
+        "latency_sec": round(elapsed, 2),
+        "context_efficiency": round(total_tokens / max(correct, 1), 2),
     }
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Main Evaluation Driver
-# ────────────────────────────────────────────────────────────────────────────────
 
-def run_benchmarks(n_mmlu: int | None, n_bbh: int | None, n_tqa: int | None):
-    """Run all benchmarks for both models and produce comparison report."""
+# ─── Driver ───────────────────────────────────────────────────────────────────
+
+def run(n_mmlu, n_bbh, n_tqa):
     print("╔══════════════════════════════════════════════════════════════╗")
-    print("║   Synnapse Benchmark Evaluation Suite                      ║")
-    print("║   Base Model  : Qwen/Qwen2.5-3B-Instruct                  ║")
-    print("║   Fine-Tuned  : Wvidit/Qwen-3-grpo                        ║")
-    print("╚══════════════════════════════════════════════════════════════╝")
-    print()
+    print("║  Stage 1 — Model Benchmarking                              ║")
+    print("║  Base : Qwen/Qwen2.5-3B-Instruct                          ║")
+    print("║  FT   : Wvidit/Qwen-3-grpo                                ║")
+    print("╚══════════════════════════════════════════════════════════════╝\n")
 
-    all_results = {"timestamp": datetime.now().isoformat(), "models": {}}
+    all_results = {"timestamp": datetime.now().isoformat(), "stage": "model_benchmark", "models": {}}
 
-    for tag, model_name in [("base", BASE_MODEL_NAME), ("fine_tuned", FT_MODEL_NAME)]:
-        print(f"\n{'━' * 60}")
-        print(f"  Evaluating: {model_name}  ({tag})")
-        print(f"{'━' * 60}")
-        model, tokenizer = load_model_and_tokenizer(model_name)
+    for tag, name in [("base", BASE_MODEL_NAME), ("fine_tuned", FT_MODEL_NAME)]:
+        print(f"\n{'━' * 60}\n  Evaluating: {name}  ({tag})\n{'━' * 60}")
+        model, tok = load_model_and_tokenizer(name)
 
-        results = {}
-        start = time.time()
+        r = {}
+        r["mmlu"]       = eval_mmlu(model, tok, n=n_mmlu)
+        r["bbh"]        = eval_bbh(model, tok, n=n_bbh)
+        r["truthfulqa"] = eval_truthfulqa(model, tok, n=n_tqa)
 
-        # 1) MMLU
-        results["mmlu"] = evaluate_mmlu(model, tokenizer, n_samples=n_mmlu)
-
-        # 2) Big-Bench Hard
-        results["bbh"]  = evaluate_bbh(model, tokenizer, n_samples=n_bbh)
-
-        # 3) TruthfulQA
-        results["truthfulqa"] = evaluate_truthfulqa(model, tokenizer, n_samples=n_tqa)
-
-        results["total_time_sec"] = round(time.time() - start, 1)
-        all_results["models"][tag] = results
-
-        # Free GPU memory before loading next model
+        all_results["models"][tag] = r
         del model
         torch.cuda.empty_cache()
 
-    # ── Print comparison table ────────────────────────────────────────────────
-    print("\n")
-    print("╔══════════════════════════════════════════════════════════════════════╗")
-    print("║                     BENCHMARK COMPARISON                           ║")
-    print("╠══════════════════════════╦════════════════╦════════════════╦════════╣")
-    print("║ Benchmark                ║ Base Model     ║ Fine-Tuned     ║ Delta  ║")
-    print("╠══════════════════════════╬════════════════╬════════════════╬════════╣")
+    # ── Comparison table ──────────────────────────────────────────────────────
+    hdr = f"{'Benchmark':<22} | {'Base Accuracy':>14} | {'FT Accuracy':>14} | {'Delta':>8} | {'Halluc.':>8}"
+    sep = "-" * len(hdr)
+    print(f"\n{sep}\n{hdr}\n{sep}")
 
-    benchmarks = [
-        ("MMLU",                "mmlu"),
-        ("Big-Bench Hard",      "bbh"),
-        ("TruthfulQA (MC1)",    "truthfulqa"),
-    ]
+    for display, key in [("MMLU", "mmlu"), ("Big-Bench Hard", "bbh"), ("TruthfulQA (MC1)", "truthfulqa")]:
+        ba = all_results["models"]["base"][key]["accuracy"]
+        fa = all_results["models"]["fine_tuned"][key]["accuracy"]
+        bh = all_results["models"]["base"][key].get("hallucination_rate")
+        fh = all_results["models"]["fine_tuned"][key].get("hallucination_rate")
 
-    for display_name, key in benchmarks:
-        base_acc = all_results["models"]["base"][key]["accuracy"]
-        ft_acc   = all_results["models"]["fine_tuned"][key]["accuracy"]
+        ba_s = f"{ba:.2%}" if ba is not None else "N/A"
+        fa_s = f"{fa:.2%}" if fa is not None else "N/A"
+        d_s  = f"{fa - ba:+.2%}" if ba is not None and fa is not None else "N/A"
+        h_s  = f"{fh:.2%}" if fh is not None else "—"
+        print(f"{display:<22} | {ba_s:>14} | {fa_s:>14} | {d_s:>8} | {h_s:>8}")
 
-        if base_acc is not None and ft_acc is not None:
-            delta = ft_acc - base_acc
-            delta_str = f"{delta:+.2%}"
-        else:
-            delta_str = "N/A"
+    print(sep)
 
-        base_str = f"{base_acc:.2%}" if base_acc is not None else "N/A"
-        ft_str   = f"{ft_acc:.2%}"   if ft_acc   is not None else "N/A"
-
-        print(f"║ {display_name:<24} ║ {base_str:>14} ║ {ft_str:>14} ║ {delta_str:>6} ║")
-
-    print("╚══════════════════════════╩════════════════╩════════════════╩════════╝")
+    # ── Cost table ────────────────────────────────────────────────────────────
+    print(f"\n{'System':<22} | {'Accuracy':>10} | {'Tokens':>10} | {'Cost':>10}")
+    print("-" * 62)
+    for tag_label, tag_key in [("Base Model", "base"), ("Fine-Tuned (GRPO)", "fine_tuned")]:
+        for bname, bkey in [("MMLU", "mmlu"), ("BBH", "bbh"), ("TruthfulQA", "truthfulqa")]:
+            r = all_results["models"][tag_key][bkey]
+            acc_s = f"{r['accuracy']:.2%}" if r['accuracy'] is not None else "N/A"
+            print(f"{tag_label+' '+bname:<22} | {acc_s:>10} | {r['total_tokens']:>10} | ${r['cost']:>8}")
     print()
 
-    base_time = all_results["models"]["base"]["total_time_sec"]
-    ft_time   = all_results["models"]["fine_tuned"]["total_time_sec"]
-    print(f"  Total evaluation time:  base={base_time}s  |  fine-tuned={ft_time}s")
-    print()
-
-    # ── Save results ─────────────────────────────────────────────────────────
     with open(RESULTS_PATH, "w") as f:
         json.dump(all_results, f, indent=2)
-    print(f"  Results saved to: {RESULTS_PATH}")
-
+    print(f"  Results saved → {RESULTS_PATH}")
     return all_results
 
 
-# ────────────────────────────────────────────────────────────────────────────────
-# CLI
-# ────────────────────────────────────────────────────────────────────────────────
-
 def main():
-    parser = argparse.ArgumentParser(
-        description="Evaluate Synnapse model on MMLU, Big-Bench Hard, and TruthfulQA"
-    )
-    parser.add_argument(
-        "--samples", type=int, default=None,
-        help="Override per-benchmark sample count (for quick testing)"
-    )
-    parser.add_argument(
-        "--full", action="store_true",
-        help="Run on the full benchmark datasets (slow!)"
-    )
-    parser.add_argument(
-        "--mmlu-samples",  type=int, default=200,
-        help="Number of MMLU samples (default: 200)"
-    )
-    parser.add_argument(
-        "--bbh-samples",   type=int, default=100,
-        help="Number of BBH samples (default: 100)"
-    )
-    parser.add_argument(
-        "--tqa-samples",   type=int, default=None,
-        help="Number of TruthfulQA samples (default: all)"
-    )
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser(description="Stage 1 — Model Benchmarking")
+    ap.add_argument("--samples", type=int, default=None, help="Override per-benchmark sample count")
+    ap.add_argument("--full", action="store_true", help="Full datasets")
+    ap.add_argument("--mmlu-samples", type=int, default=200)
+    ap.add_argument("--bbh-samples", type=int, default=100)
+    ap.add_argument("--tqa-samples", type=int, default=None)
+    args = ap.parse_args()
 
-    # --samples overrides per-benchmark settings
     if args.samples is not None:
         n_mmlu = n_bbh = n_tqa = args.samples
     elif args.full:
         n_mmlu = n_bbh = n_tqa = None
     else:
-        n_mmlu = args.mmlu_samples
-        n_bbh  = args.bbh_samples
-        n_tqa  = args.tqa_samples
+        n_mmlu, n_bbh, n_tqa = args.mmlu_samples, args.bbh_samples, args.tqa_samples
 
-    run_benchmarks(n_mmlu, n_bbh, n_tqa)
+    run(n_mmlu, n_bbh, n_tqa)
 
 
 if __name__ == "__main__":

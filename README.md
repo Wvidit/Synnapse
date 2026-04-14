@@ -26,17 +26,18 @@ train model:
 python -m model.train_lora
 `
 
-evaluate model:
+benchmarking pipeline:
 `
-python -m eval.agent_eval
-python -m eval.evaluate_model
-python -m eval.benchmark_eval               # MMLU, Big-Bench Hard, TruthfulQA
-python -m eval.benchmark_eval --samples 20  # quick smoke-test
-python -m eval.benchmark_eval --full        # full benchmark datasets
-`
-
-to check per token costing:
-`
-python -m context.contextbench
+./eval.sh                  # run all 3 stages
+./eval.sh --quick          # smoke-test (few samples)
+./eval.sh --model-only     # Stage 1: MMLU / BBH / TruthfulQA
+./eval.sh --agent-only     # Stage 2: Baseline vs Neurosymbolic
+./eval.sh --context-only   # Stage 3: ContextBench
 `
 
+individual scripts:
+`
+python -m eval.benchmark_eval --samples 20       # model benchmarks
+python -m eval.agent_benchmark --samples 5       # agent comparison
+python -m eval.contextbench_eval --samples 3     # context policies
+`
