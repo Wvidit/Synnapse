@@ -6,7 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from pathlib import Path
 
 BASE_MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
-FT_MODEL_NAME = "Wvidit/Synnapse-Qwen2.5-3B"   # Fine-tuned model on HF Hub
+FT_MODEL_NAME = "Wvidit/Qwen-3-grpo"   # Fine-tuned model on HF Hub
 DATA_DIR = Path(__file__).parent.parent / "dataset"
 
 

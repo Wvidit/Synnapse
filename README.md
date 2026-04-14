@@ -30,6 +30,9 @@ evaluate model:
 `
 python -m eval.agent_eval
 python -m eval.evaluate_model
+python -m eval.benchmark_eval               # MMLU, Big-Bench Hard, TruthfulQA
+python -m eval.benchmark_eval --samples 20  # quick smoke-test
+python -m eval.benchmark_eval --full        # full benchmark datasets
 `
 
 to check per token costing:
