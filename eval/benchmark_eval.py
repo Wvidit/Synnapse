@@ -37,7 +37,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-BASE_MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
+BASE_MODEL_NAME = "Qwen/Qwen3-4B-Instruct-2507"
 FT_MODEL_NAME   = "Wvidit/Qwen-3-grpo"
 RESULTS_DIR     = Path(__file__).parent
 RESULTS_PATH    = RESULTS_DIR / "benchmark_results.json"
@@ -301,7 +301,7 @@ def eval_truthfulqa(model, tok, n=None):
 def run(n_mmlu, n_bbh, n_tqa):
     print("╔══════════════════════════════════════════════════════════════╗")
     print("║  Stage 1 — Model Benchmarking                              ║")
-    print("║  Base : Qwen/Qwen2.5-3B-Instruct                          ║")
+    print("║  Base : Qwen/Qwen3-4B-Instruct-2507                       ║")
     print("║  FT   : Wvidit/Qwen-3-grpo                                ║")
     print("╚══════════════════════════════════════════════════════════════╝\n")
 

@@ -68,7 +68,7 @@ app = modal.App("synnapse-grpo", image=image)
 # Config
 # ---------------------------------------------------------------------------
 
-MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"          # base tokeniser source
+MODEL_NAME = "Qwen/Qwen3-4B-Instruct-2507"          # base tokeniser source
 SFT_HUB    = "Wvidit/Synnapse-Qwen2.5-3B-sft"   # SFT checkpoint on HF Hub
 GRPO_HUB   = "Wvidit/Synnapse-Qwen2.5-3B"        # final GRPO model destination
 DATA_DIR   = Path("/root/dataset")

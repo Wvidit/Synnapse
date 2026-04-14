@@ -7,7 +7,7 @@ from pathlib import Path
 # All Paths for local execution
 MODEL_DIR = Path(__file__).parent.parent / "model_out"
 DATA_DIR = Path(__file__).parent.parent / "dataset"
-MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
+MODEL_NAME = "Qwen/Qwen3-4B-Instruct-2507"
 HUB_MODEL_NAME = "Wvidit/Synnapse-Qwen2.5-3B"
 
 
