@@ -250,16 +250,70 @@ def run(n_samples=None):
         r = eval_agent_config(key, config, tasks)
         all_results["agents"][key] = r
 
-    # ── Comparison table ──────────────────────────────────────────────────────
-    print(f"\n{'=' * 78}")
-    print(f"{'System':<30} | {'Accuracy':>10} | {'Tokens':>8} | {'Cost':>8} | {'Latency':>8}")
-    print(f"{'-' * 78}")
+    # ── Per-task-type breakdown ─────────────────────────────────────────────
+    task_types = sorted(set(t["type"] for t in tasks))
+
+    print(f"\n{'═' * 90}")
+    print(f"  AGENT COMPARISON — Baseline vs Neurosymbolic")
+    print(f"{'═' * 90}")
+
+    # Summary table
+    print(f"\n{'System':<32} | {'Accuracy':>10} | {'Tokens':>8} | {'Cost':>10} | {'Latency':>8} | {'Halluc.':>8}")
+    print(f"{'-' * 90}")
     for key in AGENT_CONFIGS:
         r = all_results["agents"][key]
         acc = f"{r['accuracy']:.2%}" if r['accuracy'] is not None else "N/A"
-        print(f"{r['label']:<30} | {acc:>10} | {r['avg_tokens_per_query']:>8} | "
-              f"${r['avg_cost_per_query']:>6.4f} | {r['avg_latency_sec']:>6.2f}s")
-    print(f"{'=' * 78}\n")
+        hall = f"{r['hallucination_rate']:.2%}" if r.get('hallucination_rate') is not None else "N/A"
+        print(f"{r['label']:<32} | {acc:>10} | {r['avg_tokens_per_query']:>8} | "
+              f"${r['avg_cost_per_query']:>8.4f} | {r['avg_latency_sec']:>6.2f}s | {hall:>8}")
+
+    # Delta row
+    bl = all_results["agents"].get("baseline", {})
+    ns = all_results["agents"].get("neurosymbolic", {})
+    if bl.get("accuracy") is not None and ns.get("accuracy") is not None:
+        d_acc = ns["accuracy"] - bl["accuracy"]
+        d_tok = ns["avg_tokens_per_query"] - bl["avg_tokens_per_query"]
+        d_cost = ns["avg_cost_per_query"] - bl["avg_cost_per_query"]
+        d_hall = bl["hallucination_rate"] - ns["hallucination_rate"]
+        print(f"{'-' * 90}")
+        print(f"{'  Δ Neurosymbolic Advantage':<32} | {d_acc:>+10.2%} | {d_tok:>+8} | "
+              f"${d_cost:>+8.4f} |          | {d_hall:>+8.2%}")
+
+    print(f"{'═' * 90}")
+
+    # Per-task-type breakdown
+    print(f"\n  Per-Task-Type Accuracy:")
+    print(f"  {'Task Type':<18} | {'Baseline':>10} | {'Neurosymbolic':>14} | {'Δ':>8}")
+    print(f"  {'-' * 58}")
+
+    for tt in task_types:
+        for key in ["baseline", "neurosymbolic"]:
+            details = all_results["agents"].get(key, {}).get("details", [])
+            tt_tasks = [d for d in details if d["type"] == tt]
+            tt_success = sum(1 for d in tt_tasks if d["success"])
+            all_results["agents"][key].setdefault("per_type", {})[tt] = {
+                "accuracy": round(tt_success / len(tt_tasks), 4) if tt_tasks else 0,
+                "count": len(tt_tasks),
+            }
+
+        b_acc = all_results["agents"]["baseline"]["per_type"][tt]["accuracy"]
+        n_acc = all_results["agents"]["neurosymbolic"]["per_type"][tt]["accuracy"]
+        delta = n_acc - b_acc
+        bar = "█" * min(int(abs(delta) * 20 / 0.5), 20)
+        sign = "+" if delta >= 0 else "-"
+        print(f"  {tt:<18} | {b_acc:>10.0%} | {n_acc:>14.0%} | {sign}{abs(delta):.0%} {bar}")
+
+    print()
+
+    # Tool usage summary
+    print(f"  Tools Utilised per Agent:")
+    for key in AGENT_CONFIGS:
+        details = all_results["agents"].get(key, {}).get("details", [])
+        total_steps = sum(d.get("steps", 0) for d in details)
+        avg_steps = total_steps / len(details) if details else 0
+        print(f"    {AGENT_CONFIGS[key]['label']}: avg {avg_steps:.1f} steps/task, "
+              f"{total_steps} total tool calls")
+    print()
 
     with open(RESULTS_PATH, "w") as f:
         json.dump(all_results, f, indent=2)
