@@ -64,8 +64,8 @@ def load_ai_assets():
             force=True
         )
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-        from peft import PeftModel
         
+
         # Load the final merged/trained GRPO model directly from the Hub
         model_name = "Wvidit/Qwen-3-grpo"
         logging.info(f"Loading final agent model: {model_name}")
