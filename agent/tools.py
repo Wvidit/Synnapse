@@ -26,7 +26,7 @@ _model_load_attempted = False
 
 def load_ai_assets():
     global _tokenizer, _model, _embedder, _index, _papers_data, _model_load_attempted
-    if _model_load_attempted:
+    if _model_load_attempted and _index is not None and _model is not None:
         return
     _model_load_attempted = True
         
@@ -46,8 +46,10 @@ def load_ai_assets():
             _index = faiss.read_index(str(INDEX_FILE))
             with open(DATA_DIR / "papers.json", "r") as f:
                 _papers_data = json.load(f)
-    except ImportError:
-        print("FAISS or SentenceTransformer not installed!")
+    except Exception as e:
+        import logging
+        logging.error(f"FAISS initialization error: {repr(e)}")
+        print(f"FAISS or SentenceTransformer initialization error: {repr(e)}")
         
     try:    
         import logging
