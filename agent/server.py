@@ -318,5 +318,5 @@ def run_agent(req: QueryRequest):
 
 
 if __name__ == "__main__":
-    uvicorn.run("agent.server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("agent.server:app", host="0.0.0.0", port=1111, reload=True)
 

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import './App.css';
 
-const API_URL = `http://${window.location.hostname}:8000/agent/run`;
+const API_URL = `http://${window.location.hostname}:1111/agent/run`;
 
 // Simple markdown-to-JSX for bold and newlines
 function renderText(text) {
@@ -228,7 +228,7 @@ function App() {
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
         sender: 'agent',
-        text: "I'm sorry, my systems are currently offline. Please ensure the backend server is running on port 8000.",
+        text: "I'm sorry, my systems are currently offline. Please ensure the backend server is running on port 1111.",
         steps: []
       }]);
     } finally {

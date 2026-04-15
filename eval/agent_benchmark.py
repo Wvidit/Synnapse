@@ -32,7 +32,7 @@ import requests
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-AGENT_API = "http://127.0.0.1:8000/agent/run"
+AGENT_API = "http://127.0.0.1:1111/agent/run"
 RESULTS_PATH = Path(__file__).parent / "agent_benchmark_results.json"
 COST_PER_1K_TOKENS = 0.002
 
@@ -200,7 +200,7 @@ def eval_agent_config(config_key: str, config: dict, tasks: list) -> dict:
             data = resp.json()
             latency = time.time() - t0
         except requests.exceptions.ConnectionError:
-            print("  ❌ Agent server not running (http://127.0.0.1:8000)")
+            print("  ❌ Agent server not running (http://127.0.0.1:1111)")
             print("  Run `python -m agent.server` first.")
             return _empty_result(config_key, config)
         except Exception as e:

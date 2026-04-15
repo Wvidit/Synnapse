@@ -30,7 +30,7 @@ import requests
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-AGENT_API = "http://127.0.0.1:8000/agent/run"
+AGENT_API = "http://127.0.0.1:1111/agent/run"
 RESULTS_PATH = Path(__file__).parent / "contextbench_results.json"
 COST_PER_1K_TOKENS = 0.002
 

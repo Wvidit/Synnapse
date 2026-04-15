@@ -9,8 +9,8 @@
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BACKEND_PORT=8000
-FRONTEND_PORT=5173
+BACKEND_PORT=1111
+FRONTEND_PORT=8000
 
 # Detect LAN IP address
 LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
