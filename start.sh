@@ -28,11 +28,11 @@ echo ""
 cleanup() {
     echo ""
     echo "Shutting down Synnapse..."
-    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
-    wait $BACKEND_PID $FRONTEND_PID 2>/dev/null
+    kill $(jobs -p) 2>/dev/null || true
+    wait $(jobs -p) 2>/dev/null || true
     echo "Done."
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
 
 # 1. Activate virtual environment
 if [ -d "$PROJECT_DIR/venv" ]; then
@@ -46,13 +46,11 @@ fi
 echo "🚀 Starting backend on http://$LAN_IP:$BACKEND_PORT ..."
 cd "$PROJECT_DIR"
 python -m uvicorn agent.server:app --host 0.0.0.0 --port $BACKEND_PORT --reload &
-BACKEND_PID=$!
 
 # 3. Start Vite frontend (0.0.0.0 = all network interfaces)
 echo "🚀 Starting frontend on http://$LAN_IP:$FRONTEND_PORT ..."
 cd "$PROJECT_DIR/frontend"
-npm run dev -- --host 0.0.0.0 --port $FRONTEND_PORT &
-FRONTEND_PID=$!
+npx vite --host 0.0.0.0 --port $FRONTEND_PORT &
 
 echo ""
 echo "  ✅ Backend  → http://$LAN_IP:$BACKEND_PORT/docs"
@@ -64,4 +62,3 @@ echo ""
 
 # Wait for both processes
 wait
-
