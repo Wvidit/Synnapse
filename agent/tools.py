@@ -53,7 +53,16 @@ def load_ai_assets():
         
     try:    
         import logging
-        logging.basicConfig(filename='agent.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        import sys
+        logging.basicConfig(
+            level=logging.INFO, 
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler('agent.log'), 
+                logging.StreamHandler(sys.stdout)
+            ],
+            force=True
+        )
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         from peft import PeftModel
         
@@ -77,7 +86,16 @@ def load_ai_assets():
         logging.info("Model loaded successfully.")
     except Exception as e:
         import logging
-        logging.basicConfig(filename='agent.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        import sys
+        logging.basicConfig(
+            level=logging.INFO, 
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler('agent.log'), 
+                logging.StreamHandler(sys.stdout)
+            ],
+            force=True
+        )
         logging.error(f"Failed to load Transformers models: {e}")
         print(f"Failed to load Transformers models: {e}")
 
@@ -117,9 +135,12 @@ def search_literature(query: str, top_k: int = 5):
     results = []
     
     # Simple stopword list to prevent matching on common words
-    stop_words = {"the", "a", "an", "is", "of", "and", "in", "to", "for", "on", "with", "about", "tell", "me", "what", "how", "why"}
+    stop_words = {"the", "a", "an", "is", "of", "and", "in", "to", "for", "on", "with", "about", "tell", "me", "what", "how", "why", "hi", "hello"}
     q_words = set(w.lower() for w in query.split() if w.lower() not in stop_words and len(w) > 2)
     
+    if not q_words:
+        return {"message": "Please provide a more descriptive scientific query. Simple greetings or short words do not yield specific literature matches."}
+
     for dist, idx in zip(D[0], I[0]):
         # Filter out invalid indices or low-quality hits.
         if idx == -1 or idx >= len(_papers_data):
@@ -132,10 +153,9 @@ def search_literature(query: str, top_k: int = 5):
         # Relevance Filter: If there are meaningful keywords in the query,
         # require at least ONE of them to appear in the title or abstract.
         # This prevents FAISS from returning random papers for out-of-distribution queries (e.g. 'Mona Lisa')
-        if q_words:
-            content = f"{title} {abstract}".lower()
-            if not any(qw in content for qw in q_words):
-                continue
+        content = f"{title} {abstract}".lower()
+        if not any(qw in content for qw in q_words):
+            continue
                 
         abstract_snippet = abstract[:250]
         results.append(f"**{title}**\n{abstract_snippet}...")
