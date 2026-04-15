@@ -66,10 +66,17 @@ def load_ai_assets():
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         
 
-        # Load the final merged/trained GRPO model directly from the Hub
-        model_name = "Wvidit/Qwen-3-grpo"
-        logging.info(f"Loading final agent model: {model_name}")
-        print(f"Loading final agent model: {model_name}")
+        # Load the final merged/trained GRPO model directly from the Hub or Local
+        import os
+        local_model_dir = "grpo_output"
+        if os.path.exists(local_model_dir):
+            model_name = local_model_dir
+            logging.info(f"Loading final agent model from LOCAL fallback: {model_name}")
+            print(f"Loading final agent model from LOCAL fallback: {model_name}")
+        else:
+            model_name = "Wvidit/Qwen-3-grpo"
+            logging.info(f"Loading final agent model from Hub: {model_name}")
+            print(f"Loading final agent model from Hub: {model_name}")
         
         _tokenizer = AutoTokenizer.from_pretrained(model_name)
         
