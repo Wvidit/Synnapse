@@ -304,6 +304,8 @@ def run_agent(req: QueryRequest):
     # 5. Synthesize a final conversational answer from all tool results
     answer = _synthesize_answer(req.query, context, tools_used)
 
+    print(f"\\n✅ Final Agent Answer: {answer}")
+
     return {
         "status": "success",
         "answer": answer,

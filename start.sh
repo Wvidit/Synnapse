@@ -45,7 +45,7 @@ fi
 # 2. Start FastAPI backend (0.0.0.0 = all network interfaces)
 echo "🚀 Starting backend on http://$LAN_IP:$BACKEND_PORT ..."
 cd "$PROJECT_DIR"
-python -m uvicorn agent.server:app --host 0.0.0.0 --port $BACKEND_PORT --reload &
+PYTHONUNBUFFERED=1 python -u -m uvicorn agent.server:app --host 0.0.0.0 --port $BACKEND_PORT --reload &
 
 # 3. Start Vite frontend (0.0.0.0 = all network interfaces)
 echo "🚀 Starting frontend on http://$LAN_IP:$FRONTEND_PORT ..."
