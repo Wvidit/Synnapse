@@ -50,11 +50,14 @@ def load_ai_assets():
         print("FAISS or SentenceTransformer not installed!")
         
     try:    
+        import logging
+        logging.basicConfig(filename='agent.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
         from peft import PeftModel
         
         # Load the final merged/trained GRPO model directly from the Hub
         model_name = "Wvidit/Qwen-3-grpo"
+        logging.info(f"Loading final agent model: {model_name}")
         print(f"Loading final agent model: {model_name}")
         
         _tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -69,8 +72,12 @@ def load_ai_assets():
             device_map="auto",
             #quantization_config=bnb_config
         )
-    except ImportError:
-        print("Transformers or Peft not installed!")
+        logging.info("Model loaded successfully.")
+    except Exception as e:
+        import logging
+        logging.basicConfig(filename='agent.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        logging.error(f"Failed to load Transformers models: {e}")
+        print(f"Failed to load Transformers models: {e}")
 
 def strip_think_tags(text: str) -> str:
     """Strip <think>...</think> reasoning blocks emitted by Qwen3 models."""
@@ -88,6 +95,7 @@ def generate_llm_response(prompt: str, max_new_tokens=150) -> str:
             **inputs, 
             max_new_tokens=max_new_tokens, 
             temperature=0.3,
+            do_sample=True,
             pad_token_id=_tokenizer.pad_token_id
         )
     # Decode, strip the prompt, then strip Qwen3 <think> blocks

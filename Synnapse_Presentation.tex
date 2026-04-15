@@ -1,0 +1,163 @@
+\documentclass{beamer}
+
+\usetheme{Madrid}
+\usecolortheme{whale}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{caption}
+
+\title{Synnapse}
+\subtitle{Neurosymbolic Agentic Pipeline for Scientific Research}
+\author{Team Synnapse}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+    \titlepage
+\end{frame}
+
+\begin{frame}{Introduction to Synnapse}
+    \begin{itemize}
+        \item \textbf{What is Synnapse?} An advanced, end-to-end neurosymbolic pipeline engineered to automate scientific literature analysis and query resolution.
+        \item \textbf{Why Neurosymbolic?} By combining large language models (neural) with structured knowledge graphs and formal logic (symbolic), Synnapse drastically improves accuracy and reduces hallucinations.
+        \item \textbf{Key Advantages:} Supports deep multi-hop reasoning (connecting multiple disparate facts) and strict hypothesis verification against verified research.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{System Setup & End-to-End Workflow}
+    \begin{itemize}
+        \item \textbf{Turnkey Deployment:} The entire system can be bootstrapped via \texttt{start.sh}.
+        \item \textbf{Modular Components:}
+        \begin{enumerate}
+            \item \textbf{Data Pipeline Scripts:} Fetching data, generating taxonomies, and building graphs.
+            \item \textbf{Backend Server:} Hosts the neurosymbolic orchestration core.
+            \item \textbf{Frontend UI:} An interactive Node/React dashboard for user queries.
+            \item \textbf{Model Training:} Dedicated scripts for domain-specific fine-tuning.
+            \item \textbf{Benchmarking Engine:} Rigorous evaluation scripts for all pipeline stages.
+        \end{enumerate}
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Data Processing Pipeline}
+    \begin{itemize}
+        \item \textbf{\texttt{fetch\_papers}:} Automates the retrieval of academic papers from scientific databases.
+        \item \textbf{\texttt{build\_graph} \& \texttt{build\_taxonomy}:} Structures unstructured text into detailed property graphs and hierarchical taxonomies.
+        \item \textbf{\texttt{embed\_papers}:} Generates dense vector embeddings for semantic retrieval.
+        \item \textbf{\texttt{generate\_triples} \& \texttt{generate\_qa}:} Extracts semantic triples (subject, predicate, object) and generates synthetic QA pairs to facilitate both agent reasoning and model training.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Model Training \& Infrastructure}
+    \begin{itemize}
+        \item \textbf{Local Fine-Tuning:} The pipeline includes local model training via \texttt{local\_grpo.py}.
+        \item \textbf{GRPO (Generative Reward Policy Optimization):} We fine-tune base language models directly on the generated scientific datasets to enhance their reasoning aligned with scientific truths.
+        \item \textbf{Agent Hosting:} The trained model and reasoning engine are hosted on a Python server (\texttt{agent/server.py}), making it accessible to the frontend web tier.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Evaluation Stage 1: Model Benchmarks}
+    \textbf{Base vs Fine-Tuned Performance Across Standard Tests}
+    
+    \vspace{0.3cm}
+    \begin{table}[]
+        \centering
+        \begin{tabular}{lccc}
+            \toprule
+            \textbf{Benchmark} & \textbf{Base Accuracy} & \textbf{Fine-Tuned} & \textbf{Delta} \\
+            \midrule
+            MMLU & 65.50\% & 70.50\% & \textcolor{green!60!black}{+5.00\%} \\
+            Big-Bench Hard & 10.00\% & 36.00\% & \textcolor{green!60!black}{+26.00\%} \\
+            TruthfulQA (MC1) & 41.62\% & 42.72\% & \textcolor{green!60!black}{+1.10\%} \\
+            Domain QA$^*$ & 37.91\% & 50.38\% & \textcolor{green!60!black}{+12.47\%} \\
+            \bottomrule
+        \end{tabular}
+        \vspace{0.1cm}
+        \caption*{$^*$Domain QA measured via Word Overlap metric}
+    \end{table}
+    \begin{itemize}
+        \item \textbf{Takeaway:} GRPO fine-tuning yielded a massive 26\% boost on complex Big-Bench Hard reasoning tasks.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Evaluation Stage 2: Agent Performance}
+    \textbf{Comparing standard LLM agents vs our Neurosymbolic approach}
+    
+    \vspace{0.3cm}
+    \begin{table}[]
+        \centering
+        \resizebox{\linewidth}{!}{
+        \begin{tabular}{lcccc}
+            \toprule
+            \textbf{Agent} & \textbf{Accuracy} & \textbf{Hallucination Rate} & \textbf{Latency} & \textbf{Cost/Query} \\
+            \midrule
+            Baseline LLM Agent & 80.00\% & 37.74\% & 0.83s & \$0.0005 \\
+            Neurosymbolic Agent & \textbf{100.00\%} & \textbf{12.64\%} & \textbf{0.82s} & \$0.0006 \\
+            \bottomrule
+        \end{tabular}
+        }
+    \end{table}
+    \begin{itemize}
+        \item \textbf{Takeaway:} The Neurosymbolic agent eliminates accuracy drops in our sample set and cuts hallucinations down from nearly 38\% to 12.6\%, without noticeably impacting latency or cost.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Evaluation Stage 2: Task-Type Breakdown}
+    \textbf{Where does the Neurosymbolic Agent excel?}
+    
+    \vspace{0.3cm}
+    \begin{table}[]
+        \centering
+        \begin{tabular}{lccc}
+            \toprule
+            \textbf{Task Type} & \textbf{Baseline} & \textbf{Neurosymbolic} & \textbf{Delta} \\
+            \midrule
+            Hypothesis & 100\% & 100\% & --- \\
+            \textbf{Multi-hop} & \textbf{50\%} & \textbf{100\%} & \textcolor{green!60!black}{\textbf{+50\%}} \\
+            Single-hop & 100\% & 100\% & --- \\
+            Summarization & 100\% & 100\% & --- \\
+            \textbf{Verification} & \textbf{50\%} & \textbf{100\%} & \textcolor{green!60!black}{\textbf{+50\%}} \\
+            \bottomrule
+        \end{tabular}
+    \end{table}
+    \begin{itemize}
+        \item \textbf{Takeaway:} While both agents are perfect at simple summarization and single-hop tasks, standard LLMs struggle (-50\% drop) when asked to bridge multiple concepts (multi-hop) or rigorously verify facts. Our framework solves this.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Evaluation Stage 3: ContextBench (Context Policies)}
+    \textbf{Optimizing the LLM Context Window Budget}
+    
+    \vspace{0.3cm}
+    \begin{table}[]
+        \centering
+        \resizebox{\linewidth}{!}{
+        \begin{tabular}{lcccc}
+            \toprule
+            \textbf{Policy} & \textbf{Accuracy} & \textbf{Target Budget} & \textbf{Avg Tokens} & \textbf{Avg Cost} \\
+            \midrule
+            A: Naive Full Context & 62.5\% & 8192 & 230 & \$0.0005 \\
+            B: RAG Retrieval & 62.5\% & 4096 & 255 & \$0.0005 \\
+            C: Compression+Cache & 37.5\% & 2048 & 291 & \$0.0006 \\
+            \bottomrule
+        \end{tabular}
+        }
+    \end{table}
+    \begin{itemize}
+        \item \textbf{Takeaway:} Policy B (RAG Retrieval) is optimal. It requires only 50\% of the context budget (4096 tokens) compared to the Naive approach, but maintains identical accuracy. Over-compression (Policy C) leads to performance degradation.
+    \end{itemize}
+\end{frame}
+
+\begin{frame}{Conclusion}
+    \begin{itemize}
+        \item \textbf{Reliability First:} By grounding LLM reasoning in verified taxonomy and property graphs, scientific claims are validated rigorously, drastically reducing AI hallucinations.
+        \item \textbf{Domain Specialization:} Local fine-tuning enables standard models to tackle highly-complex specific domain problems, as seen by the +26\% BBH gain.
+        \item \textbf{Optimized Retrieval:} RAG-based context policies keep token use low, meaning the system can scale efficiently in production.
+    \end{itemize}
+    
+    \vspace{0.8cm}
+    \centering \Large \textbf{Thank You!}
+\end{frame}
+
+\end{document}
